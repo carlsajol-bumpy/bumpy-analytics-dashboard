@@ -17,7 +17,12 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
   })
   
   // Analytics data
-  const [analytics, setAnalytics] = useState({
+  const [analytics, setAnalytics] = useState<{
+    overview: { totalSpend: number, totalRevenue: number, avgRoas: number, totalConversions: number, activeAds: number },
+    weeklyTrend: any[],
+    topPerformers: any[],
+    batchComparison: any[]
+  }>({
     overview: { totalSpend: 0, totalRevenue: 0, avgRoas: 0, totalConversions: 0, activeAds: 0 },
     weeklyTrend: [],
     topPerformers: [],
