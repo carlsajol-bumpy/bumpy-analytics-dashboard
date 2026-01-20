@@ -7,31 +7,24 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
   const [loading, setLoading] = useState(true)
   const [allData, setAllData] = useState<any[]>([])
   
+  // Date range
+  const [dateRange, setDateRange] = useState('last_7d')
+  const [compareMode, setCompareMode] = useState(false)
+  
   // Filters
   const [filters, setFilters] = useState({
     batch: 'All',
+    week: 'All',
     persona: 'All',
     conceptCode: 'All',
     performanceCategory: 'All',
+    status: 'All',
     searchQuery: ''
-  })
-  
-  // Analytics data
-  const [analytics, setAnalytics] = useState<{
-    overview: { totalSpend: number, totalRevenue: number, avgRoas: number, totalConversions: number, activeAds: number },
-    weeklyTrend: any[],
-    topPerformers: any[],
-    batchComparison: any[]
-  }>({
-    overview: { totalSpend: 0, totalRevenue: 0, avgRoas: 0, totalConversions: 0, activeAds: 0 },
-    weeklyTrend: [],
-    topPerformers: [],
-    batchComparison: []
   })
 
   useEffect(() => {
     fetchData()
-  }, [])
+  }, [dateRange])
 
   useEffect(() => {
     if (allData.length > 0) {
@@ -43,14 +36,14 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
     setLoading(true)
     
     try {
+      // Get ALL ads (ACTIVE + PAUSED) - no status filter
       const { data, error } = await supabase
         .from('creative_performance')
         .select('*')
-        .eq('status', 'ACTIVE')
         .order('batch', { ascending: true })
 
       if (error) {
-        console.error('Error fetching data:', error)
+        console.error('Error fetching analytics:', error)
         setLoading(false)
         return
       }
@@ -65,118 +58,104 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
     setLoading(false)
   }
 
+  function extractWeekFromBatch(batch: string) {
+    const match = batch?.match(/Week(\d+)/i)
+    return match ? `Week${match[1]}` : batch
+  }
+
   function calculateAnalytics() {
-    // Filter data based on selected filters
+    // Filter data
     let filteredData = allData.filter(ad => {
       if (filters.batch !== 'All' && ad.batch !== filters.batch) return false
+      if (filters.week !== 'All') {
+        const adWeek = extractWeekFromBatch(ad.batch)
+        if (adWeek !== filters.week) return false
+      }
       if (filters.persona !== 'All' && ad.persona !== filters.persona) return false
       if (filters.conceptCode !== 'All' && ad.concept_code !== filters.conceptCode) return false
       if (filters.performanceCategory !== 'All' && ad.performance_category !== filters.performanceCategory) return false
+      if (filters.status !== 'All' && ad.status !== filters.status) return false
       
-      // Search filter
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase()
-        const matchesAdName = ad.ad_name?.toLowerCase().includes(query)
-        const matchesConceptCode = ad.concept_code?.toLowerCase().includes(query)
-        const matchesPersona = ad.persona?.toLowerCase().includes(query)
-        const matchesBatch = ad.batch?.toLowerCase().includes(query)
-        
-        if (!matchesAdName && !matchesConceptCode && !matchesPersona && !matchesBatch) return false
+        return ad.ad_name?.toLowerCase().includes(query) ||
+               ad.concept_code?.toLowerCase().includes(query) ||
+               ad.persona?.toLowerCase().includes(query) ||
+               ad.batch?.toLowerCase().includes(query)
       }
       
       return true
     })
 
-    // Calculate overview metrics
-    const totalSpend = filteredData.reduce((sum, ad) => sum + parseFloat(ad.spend_7d || 0), 0)
-    const totalConversions = filteredData.reduce((sum, ad) => sum + parseInt(ad.conversions_7d || 0), 0)
-    const totalRevenue = filteredData.reduce((sum, ad) => {
-      const roas = parseFloat(ad.roas_7d || 0)
-      const spend = parseFloat(ad.spend_7d || 0)
-      return sum + (roas * spend)
-    }, 0)
-    const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0
-
-    // Weekly trend (group by batch/week)
-    const weeklyData: any = {}
-    filteredData.forEach(ad => {
-      const week = ad.batch || 'Unknown'
-      if (!weeklyData[week]) {
-        weeklyData[week] = {
-          week: week,
-          spend: 0,
-          revenue: 0,
-          conversions: 0,
-          ads: 0
-        }
-      }
-      const spend = parseFloat(ad.spend_7d || 0)
-      const roas = parseFloat(ad.roas_7d || 0)
-      
-      weeklyData[week].spend += spend
-      weeklyData[week].revenue += (roas * spend)
-      weeklyData[week].conversions += parseInt(ad.conversions_7d || 0)
-      weeklyData[week].ads += 1
-    })
-
-    const weeklyTrend = Object.values(weeklyData)
-      .sort((a: any, b: any) => a.week.localeCompare(b.week))
-      .slice(-12) // Show last 12 weeks only
-
-    // Top performers
-    const topPerformers = [...filteredData]
-      .filter(ad => parseFloat(ad.roas_7d || 0) > 0)
-      .sort((a, b) => parseFloat(b.roas_7d || 0) - parseFloat(a.roas_7d || 0))
-      .slice(0, 10)
-
-    // Batch comparison (compare all batches side by side)
-    const batchData: any = {}
-    filteredData.forEach(ad => {
-      const batch = ad.batch || 'Unknown'
-      if (!batchData[batch]) {
-        batchData[batch] = {
-          batch: batch,
-          ads: 0,
-          spend: 0,
-          conversions: 0,
-          avgRoas: 0,
-          roasSum: 0
-        }
-      }
-      batchData[batch].ads += 1
-      batchData[batch].spend += parseFloat(ad.spend_7d || 0)
-      batchData[batch].conversions += parseInt(ad.conversions_7d || 0)
-      batchData[batch].roasSum += parseFloat(ad.roas_7d || 0)
-    })
-
-    const batchComparison = Object.values(batchData)
-      .map((b: any) => ({
-        ...b,
-        avgRoas: b.ads > 0 ? b.roasSum / b.ads : 0,
-        cpa: b.conversions > 0 ? b.spend / b.conversions : 0
-      }))
-      .sort((a: any, b: any) => b.spend - a.spend)
-      .slice(0, 10) // Top 10 batches by spend
-
-    setAnalytics({
-      overview: {
-        totalSpend,
-        totalRevenue,
-        avgRoas,
-        totalConversions,
-        activeAds: filteredData.length
-      },
-      weeklyTrend,
-      topPerformers,
-      batchComparison
-    })
+    setAnalytics(filteredData)
   }
+
+  const [analytics, setAnalytics] = useState<any[]>([])
+
+  // Calculate totals
+  const totals = analytics.reduce((acc, ad) => {
+    const spend = parseFloat(ad.spend_7d || 0)
+    const revenue = parseFloat(ad.roas_7d || 0) * spend
+    
+    acc.spend += spend
+    acc.revenue += revenue
+    acc.impressions += parseInt(ad.impressions_7d || 0)
+    acc.clicks += parseInt(ad.clicks_7d || 0)
+    acc.conversions += parseInt(ad.conversions_7d || 0)
+    acc.count += 1
+    return acc
+  }, {
+    spend: 0,
+    revenue: 0,
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    count: 0
+  })
+
+  const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
+  const overallCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) : 0
+  const overallCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0
+  const overallCvr = totals.clicks > 0 ? totals.conversions / totals.clicks : 0
+  const overallItp = totals.impressions > 0 ? totals.conversions / totals.impressions : 0
+  const overallPp10k = totals.impressions > 0 ? (totals.conversions / totals.impressions) * 10000 : 0
 
   // Get unique values for filters
   const batches = ['All', ...new Set(allData.map(ad => ad.batch).filter(Boolean))].sort()
+  const weeks = ['All', ...new Set(allData.map(ad => extractWeekFromBatch(ad.batch)).filter(Boolean))].sort()
   const personas = ['All', ...new Set(allData.map(ad => ad.persona).filter(Boolean))].sort()
   const conceptCodes = ['All', ...new Set(allData.map(ad => ad.concept_code).filter(Boolean))].sort()
-  const performanceCategories = ['All', 'winning', 'contender', 'fatigued', 'not-performing']
+  const performanceCategories = ['All', 'winning', 'contender', 'fatigued', 'not-spending', 'not-performing', 'paused', 'paused-winner', 'paused-fatigued']
+  const statuses = ['All', 'ACTIVE', 'PAUSED']
+
+  // Weekly trend data
+  const weeklyData: any = {}
+  analytics.forEach(ad => {
+    const week = ad.batch || 'Unknown'
+    if (!weeklyData[week]) {
+      weeklyData[week] = {
+        week: week,
+        spend: 0,
+        revenue: 0,
+        conversions: 0,
+        roas: 0
+      }
+    }
+    const spend = parseFloat(ad.spend_7d || 0)
+    const roas = parseFloat(ad.roas_7d || 0)
+    
+    weeklyData[week].spend += spend
+    weeklyData[week].revenue += (roas * spend)
+    weeklyData[week].conversions += parseInt(ad.conversions_7d || 0)
+  })
+
+  const weeklyTrend = Object.values(weeklyData)
+    .map((w: any) => ({
+      ...w,
+      roas: w.spend > 0 ? w.revenue / w.spend : 0
+    }))
+    .sort((a: any, b: any) => a.week.localeCompare(b.week))
+    .slice(-12)
 
   if (loading) {
     return (
@@ -191,6 +170,49 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
 
   return (
     <div className="space-y-6">
+      {/* Date Range & Compare Mode */}
+      <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Date Range</span>
+            
+            <select
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              className={`px-4 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+            >
+              <option value="last_7d">Last 7 Days</option>
+              <option value="last_14d">Last 14 Days</option>
+              <option value="last_30d">Last 30 Days</option>
+              <option value="this_week">This Week</option>
+              <option value="last_week">Last Week</option>
+              <option value="this_month">This Month</option>
+            </select>
+          </div>
+
+          <button
+            onClick={() => setCompareMode(!compareMode)}
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+              compareMode
+                ? 'bg-cyan-600 text-white'
+                : isDark 
+                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              {compareMode ? 'Comparing...' : 'Compare vs Previous'}
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Filters Section */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-2 mb-4">
@@ -200,180 +222,193 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
           <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Filters</h3>
         </div>
 
-        <div className="grid grid-cols-5 gap-4 mb-4">
+        <div className="grid grid-cols-7 gap-4 mb-4">
+          {/* Status Filter */}
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Status</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters({...filters, status: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+            >
+              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
           {/* Batch Filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Batch / Week
-            </label>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Batch</label>
             <select
               value={filters.batch}
               onChange={(e) => setFilters({...filters, batch: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300 text-gray-900'
-              }`}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
             >
-              {batches.map(batch => (
-                <option key={batch} value={batch}>{batch}</option>
-              ))}
+              {batches.map(batch => <option key={batch} value={batch}>{batch}</option>)}
+            </select>
+          </div>
+
+          {/* Week Filter */}
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Week</label>
+            <select
+              value={filters.week}
+              onChange={(e) => setFilters({...filters, week: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+            >
+              {weeks.map(week => <option key={week} value={week}>{week}</option>)}
             </select>
           </div>
 
           {/* Persona Filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Persona
-            </label>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Persona</label>
             <select
               value={filters.persona}
               onChange={(e) => setFilters({...filters, persona: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300 text-gray-900'
-              }`}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
             >
-              {personas.map(persona => (
-                <option key={persona} value={persona}>{persona}</option>
-              ))}
+              {personas.map(persona => <option key={persona} value={persona}>{persona}</option>)}
             </select>
           </div>
 
           {/* Concept Code Filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Concept Code
-            </label>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Concept</label>
             <select
               value={filters.conceptCode}
               onChange={(e) => setFilters({...filters, conceptCode: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300 text-gray-900'
-              }`}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
             >
-              {conceptCodes.map(code => (
-                <option key={code} value={code}>{code}</option>
-              ))}
+              {conceptCodes.map(code => <option key={code} value={code}>{code}</option>)}
             </select>
           </div>
 
-          {/* Performance Category Filter */}
+          {/* Performance Filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Performance
-            </label>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Performance</label>
             <select
               value={filters.performanceCategory}
               onChange={(e) => setFilters({...filters, performanceCategory: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white' 
-                  : 'bg-white border-gray-300 text-gray-900'
-              }`}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
             >
-              {performanceCategories.map(cat => (
-                <option key={cat} value={cat}>{cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
-              ))}
+              {performanceCategories.map(cat => <option key={cat} value={cat}>{cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}</option>)}
             </select>
           </div>
 
           {/* Search Filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-              Search
-            </label>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Search</label>
             <input
               type="text"
-              placeholder="Search ads..."
+              placeholder="Search..."
               value={filters.searchQuery}
               onChange={(e) => setFilters({...filters, searchQuery: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${
-                isDark 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'
-              }`}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`}
             />
           </div>
         </div>
 
-        {/* Clear Filters Button */}
         <div className="flex items-center justify-between">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing {analytics.overview.activeAds} ads
+            Showing {totals.count} ads
           </div>
           <button
-            onClick={() => setFilters({
-              batch: 'All',
-              persona: 'All',
-              conceptCode: 'All',
-              performanceCategory: 'All',
-              searchQuery: ''
-            })}
-            className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-              isDark 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            onClick={() => setFilters({ batch: 'All', week: 'All', persona: 'All', conceptCode: 'All', performanceCategory: 'All', status: 'All', searchQuery: '' })}
+            className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
           >
             Clear Filters
           </button>
         </div>
       </div>
 
-      {/* Overview Stats */}
+      {/* Overview Stats - 5 Cards */}
       <div className="grid grid-cols-5 gap-4">
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Spend</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ${analytics.overview.totalSpend.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+            ${totals.spend.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
           </div>
         </div>
 
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Revenue</div>
+          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Revenue</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ${analytics.overview.totalRevenue.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+            ${totals.revenue.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
           </div>
         </div>
 
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Avg ROAS</div>
+          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Overall ROAS</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {analytics.overview.avgRoas.toFixed(2)}x
+            {overallRoas.toFixed(2)}x
           </div>
         </div>
 
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Conversions</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {analytics.overview.totalConversions.toLocaleString()}
+            {totals.conversions.toLocaleString()}
           </div>
         </div>
 
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Active Ads</div>
+          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Ads</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {analytics.overview.activeAds}
+            {totals.count}
+          </div>
+        </div>
+      </div>
+
+      {/* Mid & Bottom Funnel Metrics */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Mid & Bottom Funnel Indicators
+        </h3>
+        <div className="grid grid-cols-5 gap-4">
+          <div>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CTR</div>
+            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {(overallCtr * 100).toFixed(2)}%
+            </div>
+          </div>
+
+          <div>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CPC</div>
+            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              ${overallCpc.toFixed(2)}
+            </div>
+          </div>
+
+          <div>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CVR</div>
+            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {(overallCvr * 100).toFixed(2)}%
+            </div>
+          </div>
+
+          <div>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>ITP</div>
+            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {(overallItp * 100).toFixed(3)}%
+            </div>
+          </div>
+
+          <div>
+            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>PP10K</div>
+            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {overallPp10k.toFixed(1)}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Weekly Trend Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2 mb-4">
-          <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-          </svg>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Performance Trend (Last 12 Weeks)
-          </h3>
-        </div>
+        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Performance Trend (Last 12 Weeks)
+        </h3>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={analytics.weeklyTrend}>
+          <LineChart data={weeklyTrend}>
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
             <XAxis dataKey="week" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
             <YAxis stroke={isDark ? '#9CA3AF' : '#6B7280'} />
@@ -389,106 +424,9 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
             <Line type="monotone" dataKey="spend" stroke="#06B6D4" strokeWidth={2} name="Spend ($)" />
             <Line type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} name="Revenue ($)" />
             <Line type="monotone" dataKey="conversions" stroke="#8B5CF6" strokeWidth={2} name="Conversions" />
+            <Line type="monotone" dataKey="roas" stroke="#F59E0B" strokeWidth={2} name="ROAS" />
           </LineChart>
         </ResponsiveContainer>
-      </div>
-
-      {/* Batch Comparison Table */}
-      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2 mb-4">
-          <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          </svg>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Batch Performance Comparison (Top 10)
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className={isDark ? 'bg-gray-750' : 'bg-gray-50'}>
-              <tr>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Batch</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Ads</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Conversions</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Avg ROAS</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPA</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {analytics.batchComparison.map((batch: any, index: number) => (
-                <tr key={index} className={isDark ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}>
-                  <td className={`px-4 py-3 text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-                    {batch.batch}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {batch.ads}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-                    ${batch.spend.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {batch.conversions}
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${
-                    batch.avgRoas >= 2.0 ? 'text-green-600' : 
-                    batch.avgRoas >= 1.0 ? 'text-yellow-600' : 
-                    'text-red-600'
-                  }`}>
-                    {batch.avgRoas.toFixed(2)}x
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    ${batch.cpa.toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Top Performers */}
-      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2 mb-4">
-          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-          </svg>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Top 10 Performers by ROAS
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          {analytics.topPerformers.map((ad: any, index: number) => (
-            <div key={index} className={`p-4 rounded-lg border ${isDark ? 'bg-gray-750 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-medium truncate mb-1 ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-                    {ad.ad_name}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs px-2 py-0.5 rounded bg-cyan-600 text-white font-medium">
-                      {ad.concept_code}
-                    </span>
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {ad.persona}
-                    </span>
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {ad.batch}
-                    </span>
-                  </div>
-                </div>
-                <div className="ml-4 text-right">
-                  <div className="text-lg font-bold text-green-600">
-                    {parseFloat(ad.roas_7d).toFixed(2)}x
-                  </div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    ${parseFloat(ad.spend_7d).toFixed(0)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )
