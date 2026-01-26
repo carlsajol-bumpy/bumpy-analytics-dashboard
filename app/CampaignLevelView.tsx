@@ -366,9 +366,16 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
           <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Spend Distribution (Top 5)</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
-              <Pie data={sortedCampaigns.slice(0, 5).map(c => ({ name: (c.campaign_name || 'Unknown').substring(0, 20), value: c.spend_7d || 0 }))}
-                cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80} fill="#8884d8" dataKey="value">
+              <Pie 
+                data={sortedCampaigns.slice(0, 5).map(c => ({ name: (c.campaign_name || 'Unknown').substring(0, 20), value: c.spend_7d || 0 }))}
+                cx="50%" 
+                cy="50%" 
+                labelLine={false} 
+                label={(entry: any) => `${entry.name}: ${(entry.percent * 100).toFixed(0)}%`}
+                outerRadius={80} 
+                fill="#8884d8" 
+                dataKey="value"
+              >
                 {sortedCampaigns.slice(0, 5).map((e, i) => <Cell key={`cell-${i}`} fill={['#06B6D4', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444'][i % 5]} />)}
               </Pie>
               <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: '8px' }}
