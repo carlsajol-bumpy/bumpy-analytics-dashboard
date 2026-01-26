@@ -1,31 +1,71 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 
-export default function InsightsSection({ ads, loading, isDark: parentIsDark }: { ads: any[], loading: boolean, isDark?: boolean }) {
-  // Use parent's dark mode state if provided, otherwise manage own state
-  const [localIsDark, setLocalIsDark] = useState(false)
-  const isDark = parentIsDark !== undefined ? parentIsDark : localIsDark
+interface InsightsSectionProps {
+  isDark?: boolean
+}
+
+export default function InsightsSection({ isDark }: InsightsSectionProps) {
+  const [ads, setAds] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (parentIsDark === undefined) {
-      const savedTheme = localStorage.getItem('theme')
-      if (savedTheme === 'dark') {
-        setLocalIsDark(true)
-      } else if (savedTheme === 'light') {
-        setLocalIsDark(false)
-      } else {
-        setLocalIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches)
-      }
-    }
+    fetchAds()
   }, [])
 
-  const toggleDarkMode = () => {
-    if (parentIsDark === undefined) {
-      const newDark = !localIsDark
-      setLocalIsDark(newDark)
-      localStorage.setItem('theme', newDark ? 'dark' : 'light')
+  async function fetchAds() {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Get ALL ads - explicitly set high limit
+      const { data, error: fetchError, count } = await supabase
+        .from('creative_performance')
+        .select('*', { count: 'exact' })
+        .order('roas_7d', { ascending: false })
+        .limit(10000)
+
+      console.log('💡 Insights: Fetched', data?.length, 'ads. Total in DB:', count)
+
+      if (fetchError) {
+        console.error('Error fetching ads:', fetchError)
+        setError(fetchError.message)
+        setAds([])
+      } else {
+        setAds(data || [])
+      }
+    } catch (err) {
+      console.error('Error:', err)
+      setError('Failed to fetch data')
+      setAds([])
     }
+    
+    setLoading(false)
   }
+
+  // Calculate insights safely
+  const activeAds = (ads || []).filter(ad => ad.status === 'ACTIVE')
+  const pausedAds = (ads || []).filter(ad => ad.status === 'PAUSED')
+  const winningAds = (ads || []).filter(ad => ad.performance_category === 'winning')
+  const fatigued = (ads || []).filter(ad => ad.performance_category === 'fatigued')
+  const contenders = (ads || []).filter(ad => ad.performance_category === 'contender')
+  const notSpending = (ads || []).filter(ad => ad.performance_category === 'not-spending')
+
+  const totalSpend = (ads || []).reduce((sum, ad) => sum + parseFloat(ad.spend_7d || 0), 0)
+  const totalRevenue = (ads || []).reduce((sum, ad) => {
+    const roas = parseFloat(ad.roas_7d || 0)
+    const spend = parseFloat(ad.spend_7d || 0)
+    return sum + (roas * spend)
+  }, 0)
+  const totalConversions = (ads || []).reduce((sum, ad) => sum + parseInt(ad.conversions_7d || 0), 0)
+  const totalClicks = (ads || []).reduce((sum, ad) => sum + parseInt(ad.clicks_7d || 0), 0)
+  const totalImpressions = (ads || []).reduce((sum, ad) => sum + parseInt(ad.impressions_7d || 0), 0)
+  
+  const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0
+  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0
+  const avgCpc = totalClicks > 0 ? totalSpend / totalClicks : 0
 
   if (loading) {
     return (
@@ -38,430 +78,333 @@ export default function InsightsSection({ ads, loading, isDark: parentIsDark }: 
     )
   }
 
-  // Calculate insights
-  const winningAds = ads.filter(ad => ad.isWinning)
-  const fatiguedAds = ads.filter(ad => ad.isFatigued)
-  const contenderAds = ads.filter(ad => ad.performance_status === 'contender')
-  const notPerformingAds = ads.filter(ad => ad.performance_status === 'not-performing')
-  
-  const topAdsByRoas = [...ads]
-    .filter(ad => parseFloat(ad.roas_7d || 0) > 0)
-    .sort((a, b) => parseFloat(b.roas_7d || 0) - parseFloat(a.roas_7d || 0))
-    .slice(0, 5)
-  
-  const videoAds = ads.filter(ad => ad.media_type === 'video')
-  const bestVideoAds = [...videoAds]
-    .filter(ad => parseFloat(ad.hook_rate_7d || 0) > 0)
-    .sort((a, b) => {
-      const engagementA = (parseFloat(a.hook_rate_7d || 0) + parseFloat(a.hold_rate_7d || 0)) / 2
-      const engagementB = (parseFloat(b.hook_rate_7d || 0) + parseFloat(b.hold_rate_7d || 0)) / 2
-      return engagementB - engagementA
-    })
-    .slice(0, 5)
+  if (error) {
+    return (
+      <div className={`rounded-xl p-12 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="text-center">
+          <svg className="w-12 h-12 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Error Loading Data</h3>
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{error}</p>
+          <button
+            onClick={fetchAds}
+            className="mt-4 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!ads || ads.length === 0) {
+    return (
+      <div className={`rounded-xl p-12 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="text-center">
+          <svg className="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          </svg>
+          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>No Data Available</h3>
+          <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Run your n8n workflow to populate the database with ad data.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      {/* Performance Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <SummaryCard
-          title="Winning"
-          count={winningAds.length}
-          color="blue"
-          icon={<TrophyIcon />}
-          isDark={isDark}
-        />
-        <SummaryCard
-          title="Contenders"
-          count={contenderAds.length}
-          color="cyan"
-          icon={<StarIcon />}
-          isDark={isDark}
-        />
-        <SummaryCard
-          title="Fatigued"
-          count={fatiguedAds.length}
-          color="orange"
-          icon={<AlertIcon />}
-          isDark={isDark}
-        />
-        <SummaryCard
-          title="Not Performing"
-          count={notPerformingAds.length}
-          color="gray"
-          icon={<TrendDownIcon />}
-          isDark={isDark}
-        />
-      </div>
-
-      {/* Top Performing Ads & Best Videos */}
-      <div className="grid grid-cols-2 gap-6">
-        {/* Top ROAS Ads */}
-        <div className={`rounded-xl shadow-sm border overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`p-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
-                  <SparklesIcon isDark={isDark} />
-                </div>
-                <div>
-                  <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Top Performing Ads</h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Highest ROAS in last 7 days</p>
-                </div>
-              </div>
-              <span className="text-2xl font-bold text-blue-600">{topAdsByRoas.length}</span>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-5 gap-4">
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-cyan-100 rounded-lg">
+              <svg className="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+              </svg>
             </div>
-          </div>
-          <div className="p-6">
-            {topAdsByRoas.length === 0 ? (
-              <p className={`text-center py-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No high-performing ads yet</p>
-            ) : (
-              <div className="space-y-3">
-                {topAdsByRoas.map((ad, index) => (
-                  <div key={ad.ad_id || index} className={`border rounded-lg p-4 transition-colors ${
-                    isDark 
-                      ? 'border-gray-700 hover:border-blue-600 bg-gray-750' 
-                      : 'border-gray-200 hover:border-blue-300 bg-white'
-                  }`}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{ad.ad_name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs px-2 py-0.5 rounded font-medium bg-blue-600 text-white">
-                            {ad.concept_code}
-                          </span>
-                          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{ad.persona}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        ROAS: <span className="font-bold text-green-600">{parseFloat(ad.roas_7d).toFixed(2)}x</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Spend: <span className="font-semibold">${parseFloat(ad.spend_7d).toFixed(0)}</span>
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div>
+              <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Ads</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{ads.length}</div>
+            </div>
           </div>
         </div>
 
-        {/* Best Video Ads */}
-        <div className={`rounded-xl shadow-sm border overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`p-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-cyan-100 dark:bg-cyan-900">
-                  <VideoIcon isDark={isDark} />
-                </div>
-                <div>
-                  <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Best Video Ads</h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Highest engagement rates</p>
-                </div>
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Spend</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ${totalSpend.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
               </div>
-              <span className="text-2xl font-bold text-cyan-600">{bestVideoAds.length}</span>
             </div>
           </div>
-          <div className="p-6">
-            {bestVideoAds.length === 0 ? (
-              <p className={`text-center py-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>No video ads with engagement data</p>
-            ) : (
-              <div className="space-y-3">
-                {bestVideoAds.map((ad, index) => (
-                  <div key={ad.ad_id || index} className={`border rounded-lg p-4 transition-colors ${
-                    isDark 
-                      ? 'border-gray-700 hover:border-cyan-600 bg-gray-750' 
-                      : 'border-gray-200 hover:border-cyan-300 bg-white'
-                  }`}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{ad.ad_name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs px-2 py-0.5 rounded font-medium bg-cyan-600 text-white">
-                            {ad.concept_code}
-                          </span>
-                          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{ad.persona}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Hook: <span className="font-semibold">{(parseFloat(ad.hook_rate_7d || 0) * 100).toFixed(1)}%</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Hold: <span className="font-semibold">{(parseFloat(ad.hold_rate_7d || 0) * 100).toFixed(1)}%</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Spend: <span className="font-semibold">${parseFloat(ad.spend_7d).toFixed(0)}</span>
-                      </span>
-                    </div>
-                  </div>
-                ))}
+        </div>
+
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-green-100 rounded-lg">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <div>
+              <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Avg ROAS</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {avgRoas.toFixed(2)}x
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Conversions</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {totalConversions.toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-orange-100 rounded-lg">
+              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+              </svg>
+            </div>
+            <div>
+              <div className={`text-xs font-medium ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Avg CTR</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {avgCtr.toFixed(2)}%
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Attention Needed */}
-      <div className="grid grid-cols-2 gap-6">
-        {/* Fatigued Ads */}
-        <div className={`rounded-xl shadow-sm border-2 overflow-hidden ${
-          isDark 
-            ? 'bg-gray-800 border-orange-600' 
-            : 'bg-white border-orange-300'
-        }`}>
-          <div className={`p-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+      {/* Ad Status Overview */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Ad Status</h3>
+            <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${isDark ? 'bg-orange-900' : 'bg-orange-100'}`}>
-                  <AlertTriangleIcon isDark={isDark} />
-                </div>
-                <div>
-                  <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Fatigued Ads</h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Low performance despite spending</p>
-                </div>
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Active</span>
               </div>
-              <span className="text-2xl font-bold text-orange-600">{fatiguedAds.length}</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{activeAds.length}</span>
             </div>
-          </div>
-          <div className="p-6">
-            {fatiguedAds.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center bg-green-100">
-                  <CheckIcon />
-                </div>
-                <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>No fatigued ads - Great job!</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Paused</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {fatiguedAds.slice(0, 3).map((ad, index) => (
-                  <div key={ad.ad_id || index} className={`border rounded-lg p-4 ${
-                    isDark 
-                      ? 'border-orange-700 bg-gray-750' 
-                      : 'border-orange-200 bg-orange-50'
-                  }`}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{ad.ad_name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                            isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {ad.concept_code}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        ROAS: <span className="font-bold text-orange-600">{parseFloat(ad.roas_7d).toFixed(2)}x</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Spend: <span className="font-semibold">${parseFloat(ad.spend_7d).toFixed(0)}</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        CTR: <span className="font-semibold">{(parseFloat(ad.ctr_7d || 0) * 100).toFixed(2)}%</span>
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{pausedAds.length}</span>
+            </div>
           </div>
         </div>
 
-        {/* Not Performing Ads */}
-        <div className={`rounded-xl shadow-sm border-2 overflow-hidden ${
-          isDark 
-            ? 'bg-gray-800 border-gray-600' 
-            : 'bg-white border-gray-300'
-        }`}>
-          <div className={`p-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Key Metrics</h3>
+            <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                  <XCircleIcon isDark={isDark} />
-                </div>
-                <div>
-                  <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Not Performing</h3>
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Consider pausing these ads</p>
-                </div>
-              </div>
-              <span className={`text-2xl font-bold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{notPerformingAds.length}</span>
+              <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Avg CPC</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${avgCpc.toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Revenue</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                ${totalRevenue.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+              </span>
             </div>
           </div>
-          <div className="p-6">
-            {notPerformingAds.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center bg-green-100">
-                  <CheckIcon />
-                </div>
-                <p className={isDark ? 'text-gray-400' : 'text-gray-500'}>All ads performing well!</p>
+        </div>
+      </div>
+
+      {/* Performance Breakdown */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Performance Distribution</h3>
+          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            {ads.length} Total Ads
+          </span>
+        </div>
+        
+        <div className="grid grid-cols-4 gap-4">
+          {/* Winning */}
+          <div className={`p-4 rounded-lg border-2 border-green-200 ${isDark ? 'bg-green-900/20' : 'bg-green-50'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {notPerformingAds.slice(0, 3).map((ad, index) => (
-                  <div key={ad.ad_id || index} className={`border rounded-lg p-4 ${
-                    isDark 
-                      ? 'border-gray-700 bg-gray-750' 
-                      : 'border-gray-200 bg-gray-50'
-                  }`}>
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{ad.ad_name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded font-medium ${
-                            isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {ad.concept_code}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        ROAS: <span className="font-bold">{parseFloat(ad.roas_7d).toFixed(2)}x</span>
-                      </span>
-                      <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>
-                        Spend: <span className="font-semibold">${parseFloat(ad.spend_7d).toFixed(0)}</span>
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Winning</div>
+                <div className="text-2xl font-bold text-green-600">{winningAds.length}</div>
               </div>
-            )}
+            </div>
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {ads.length > 0 ? ((winningAds.length / ads.length) * 100).toFixed(1) : 0}% of total
+            </div>
           </div>
+
+          {/* Contenders */}
+          <div className={`p-4 rounded-lg border-2 border-blue-200 ${isDark ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Contenders</div>
+                <div className="text-2xl font-bold text-blue-600">{contenders.length}</div>
+              </div>
+            </div>
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {ads.length > 0 ? ((contenders.length / ads.length) * 100).toFixed(1) : 0}% of total
+            </div>
+          </div>
+
+          {/* Fatigued */}
+          <div className={`p-4 rounded-lg border-2 border-orange-200 ${isDark ? 'bg-orange-900/20' : 'bg-orange-50'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Fatigued</div>
+                <div className="text-2xl font-bold text-orange-600">{fatigued.length}</div>
+              </div>
+            </div>
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {ads.length > 0 ? ((fatigued.length / ads.length) * 100).toFixed(1) : 0}% of total
+            </div>
+          </div>
+
+          {/* Not Spending */}
+          <div className={`p-4 rounded-lg border-2 border-red-200 ${isDark ? 'bg-red-900/20' : 'bg-red-50'}`}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              </div>
+              <div>
+                <div className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Not Spending</div>
+                <div className="text-2xl font-bold text-red-600">{notSpending.length}</div>
+              </div>
+            </div>
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              {ads.length > 0 ? ((notSpending.length / ads.length) * 100).toFixed(1) : 0}% of total
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Performing Ads */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Top 10 Performing Ads (by ROAS)
+          </h3>
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className={isDark ? 'bg-gray-750' : 'bg-gray-50'}>
+              <tr>
+                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Status</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Concept</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Persona</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Batch</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS</th>
+                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR</th>
+                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Category</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
+              {ads.slice(0, 10).map((ad) => (
+                <tr key={ad.ad_id} className={isDark ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}>
+                  <td className={`px-4 py-3 text-sm`}>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      ad.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {ad.status}
+                    </span>
+                  </td>
+                  <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
+                    {ad.concept_code || 'Unknown'}
+                  </td>
+                  <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {ad.persona || 'Unknown'}
+                  </td>
+                  <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {ad.batch || 'Unknown'}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right font-medium ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
+                    ${parseFloat(ad.spend_7d || 0).toFixed(0)}
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right font-medium ${
+                    parseFloat(ad.roas_7d) >= 2.0 ? 'text-green-600' : 
+                    parseFloat(ad.roas_7d) >= 1.0 ? 'text-yellow-600' : 
+                    'text-red-600'
+                  }`}>
+                    {parseFloat(ad.roas_7d || 0).toFixed(2)}x
+                  </td>
+                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {(parseFloat(ad.ctr_7d || 0) * 100).toFixed(2)}%
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      ad.performance_category === 'winning' ? 'bg-green-100 text-green-700' :
+                      ad.performance_category === 'contender' ? 'bg-blue-100 text-blue-700' :
+                      ad.performance_category === 'fatigued' ? 'bg-orange-100 text-orange-700' :
+                      ad.performance_category === 'not-spending' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {ad.performance_category?.charAt(0).toUpperCase() + ad.performance_category?.slice(1) || 'Unknown'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
-  )
-}
-
-function SummaryCard({ title, count, color, icon, isDark }: {
-  title: string
-  count: number
-  color: 'blue' | 'cyan' | 'orange' | 'gray'
-  icon: React.ReactNode
-  isDark: boolean
-}) {
-  const colorStyles = {
-    blue: isDark ? 'bg-blue-900 border-blue-700' : 'bg-blue-50 border-blue-200',
-    cyan: isDark ? 'bg-cyan-900 border-cyan-700' : 'bg-cyan-50 border-cyan-200',
-    orange: isDark ? 'bg-orange-900 border-orange-700' : 'bg-orange-50 border-orange-200',
-    gray: isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-300'
-  }
-
-  const textColor = color === 'gray' 
-    ? (isDark ? 'text-gray-300' : 'text-gray-700')
-    : 'text-white'
-
-  return (
-    <div className={`rounded-xl p-6 shadow-sm border ${colorStyles[color]}`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className={`p-2 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-          {icon}
-        </div>
-        <span className={`text-3xl font-bold ${
-          color === 'blue' ? 'text-blue-600' :
-          color === 'cyan' ? 'text-cyan-600' :
-          color === 'orange' ? 'text-orange-600' :
-          isDark ? 'text-gray-400' : 'text-gray-600'
-        }`}>
-          {count}
-        </span>
-      </div>
-      <h3 className={`text-lg font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-        {title}
-      </h3>
-    </div>
-  )
-}
-
-// Icon components with proper colors
-function TrophyIcon() {
-  return (
-    <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
-      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
-      <path d="M4 22h16"></path>
-      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
-      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"></path>
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path>
-    </svg>
-  )
-}
-
-function StarIcon() {
-  return (
-    <svg className="w-6 h-6 text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-    </svg>
-  )
-}
-
-function AlertIcon() {
-  return (
-    <svg className="w-6 h-6 text-orange-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-      <line x1="12" y1="9" x2="12" y2="13"></line>
-      <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
-  )
-}
-
-function TrendDownIcon() {
-  return (
-    <svg className="w-6 h-6 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-      <polyline points="17 18 23 18 23 12"></polyline>
-    </svg>
-  )
-}
-
-function SparklesIcon({ isDark }: { isDark: boolean }) {
-  return (
-    <svg className={`w-6 h-6 ${isDark ? 'text-blue-400' : 'text-blue-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>
-    </svg>
-  )
-}
-
-function VideoIcon({ isDark }: { isDark: boolean }) {
-  return (
-    <svg className={`w-6 h-6 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polygon points="23 7 16 12 23 17 23 7"></polygon>
-      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-    </svg>
-  )
-}
-
-function AlertTriangleIcon({ isDark }: { isDark: boolean }) {
-  return (
-    <svg className={`w-6 h-6 ${isDark ? 'text-orange-400' : 'text-orange-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-      <line x1="12" y1="9" x2="12" y2="13"></line>
-      <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
-  )
-}
-
-function XCircleIcon({ isDark }: { isDark: boolean }) {
-  return (
-    <svg className={`w-6 h-6 ${isDark ? 'text-gray-400' : 'text-gray-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10"></circle>
-      <line x1="15" y1="9" x2="9" y2="15"></line>
-      <line x1="9" y1="9" x2="15" y2="15"></line>
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
   )
 }

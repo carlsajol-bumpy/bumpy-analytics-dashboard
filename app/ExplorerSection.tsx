@@ -2,7 +2,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ExplorerSection({ isDark }: { isDark?: boolean }) {
+interface ExplorerSectionProps {
+  isDark?: boolean
+}
+
+export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
   const [ads, setAds] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState('updated_at')
@@ -24,11 +28,15 @@ export default function ExplorerSection({ isDark }: { isDark?: boolean }) {
 
   async function fetchAds() {
     setLoading(true)
-    // Get ALL ads (ACTIVE + PAUSED)
-    const { data, error } = await supabase
+    
+    // Get ALL ads (ACTIVE + PAUSED) - explicitly set high limit
+    const { data, error, count } = await supabase
       .from('creative_performance')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order(sortField, { ascending: sortDirection === 'asc' })
+      .limit(10000)
+
+    console.log('🔍 Explorer: Fetched', data?.length, 'ads. Total in DB:', count)
 
     if (error) {
       console.error('Error:', error)

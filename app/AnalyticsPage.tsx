@@ -1,56 +1,108 @@
 'use client'
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
+interface AnalyticsPageProps {
+  isDark?: boolean
+}
+
+export default function AnalyticsPage({ isDark }: AnalyticsPageProps) {
   const [loading, setLoading] = useState(true)
-  const [allData, setAllData] = useState<any[]>([])
-  
-  // Date range
-  const [dateRange, setDateRange] = useState('last_7d')
-  const [compareMode, setCompareMode] = useState(false)
+  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [adsets, setAdsets] = useState<any[]>([])
+  const [ads, setAds] = useState<any[]>([])
   
   // Filters
   const [filters, setFilters] = useState({
-    batch: 'All',
-    week: 'All',
-    persona: 'All',
-    conceptCode: 'All',
-    performanceCategory: 'All',
-    status: 'All',
-    searchQuery: ''
+    campaign: 'All',
+    device: 'All',
+    country: 'All',
+    status: 'All'
   })
+
+  // Campaign Comparison
+  const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([])
+  const [comparisonMetric, setComparisonMetric] = useState('spend_7d')
+
+  // Line Graph Settings
+  const [lineMetricY, setLineMetricY] = useState('roas_7d')
+
+  // Performance Trend Settings
+  const [scatterMetricY, setScatterMetricY] = useState('revenue_7d')
+  
+  // Top 10 sort by
+  const [top10SortBy, setTop10SortBy] = useState('spend_7d')
+
+  // Level selector
+  const [analyticsLevel, setAnalyticsLevel] = useState<'campaign' | 'adset' | 'creative'>('campaign')
 
   useEffect(() => {
     fetchData()
-  }, [dateRange])
-
-  useEffect(() => {
-    if (allData.length > 0) {
-      calculateAnalytics()
-    }
-  }, [filters, allData])
+  }, [])
 
   async function fetchData() {
     setLoading(true)
     
     try {
-      // Get ALL ads (ACTIVE + PAUSED) - no status filter
-      const { data, error } = await supabase
+      // Fetch campaigns
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from('campaigns')
+        .select('*')
+        .limit(1000)
+
+      if (campaignsError) {
+        console.error('Error fetching campaigns:', campaignsError)
+      } else {
+        const enrichedCampaigns = (campaignsData || []).map(c => ({
+          ...c,
+          revenue_7d: parseFloat(c.revenue_7d || 0),
+          spend_7d: parseFloat(c.spend_7d || 0),
+          roas_7d: parseFloat(c.spend_7d || 0) > 0 ? parseFloat(c.revenue_7d || 0) / parseFloat(c.spend_7d || 0) : 0,
+          week: extractWeek(c.campaign_name)
+        }))
+        setCampaigns(enrichedCampaigns)
+        
+        // Auto-select top 3 campaigns
+        const top3 = enrichedCampaigns
+          .sort((a, b) => b.spend_7d - a.spend_7d)
+          .slice(0, 3)
+          .map(c => c.campaign_name)
+        setSelectedCampaigns(top3)
+      }
+
+      // Fetch ad sets
+      const { data: adsetsData, error: adsetsError } = await supabase
+        .from('adsets')
+        .select('*')
+        .limit(1000)
+
+      if (!adsetsError && adsetsData) {
+        const enrichedAdsets = adsetsData.map(a => ({
+          ...a,
+          revenue_7d: parseFloat(a.revenue_7d || 0),
+          spend_7d: parseFloat(a.spend_7d || 0),
+          roas_7d: parseFloat(a.spend_7d || 0) > 0 ? parseFloat(a.revenue_7d || 0) / parseFloat(a.spend_7d || 0) : 0
+        }))
+        setAdsets(enrichedAdsets)
+      }
+
+      // Fetch ads
+      const { data: adsData, error: adsError } = await supabase
         .from('creative_performance')
         .select('*')
-        .order('batch', { ascending: true })
+        .limit(10000)
 
-      if (error) {
-        console.error('Error fetching analytics:', error)
-        setLoading(false)
-        return
+      if (!adsError && adsData) {
+        const enrichedAds = adsData.map(ad => ({
+          ...ad,
+          revenue_7d: parseFloat(ad.revenue_7d || 0),
+          spend_7d: parseFloat(ad.spend_7d || 0),
+          roas_7d: parseFloat(ad.spend_7d || 0) > 0 ? parseFloat(ad.revenue_7d || 0) / parseFloat(ad.spend_7d || 0) : 0
+        }))
+        setAds(enrichedAds)
       }
 
-      if (data) {
-        setAllData(data)
-      }
     } catch (err) {
       console.error('Error:', err)
     }
@@ -58,104 +110,150 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
     setLoading(false)
   }
 
-  function extractWeekFromBatch(batch: string) {
-    const match = batch?.match(/Week(\d+)/i)
-    return match ? `Week${match[1]}` : batch
+  function extractWeek(campaignName: string) {
+    const match = campaignName?.match(/Week(\d+)/i)
+    return match ? parseInt(match[1]) : 0
   }
 
-  function calculateAnalytics() {
-    // Filter data
-    let filteredData = allData.filter(ad => {
-      if (filters.batch !== 'All' && ad.batch !== filters.batch) return false
-      if (filters.week !== 'All') {
-        const adWeek = extractWeekFromBatch(ad.batch)
-        if (adWeek !== filters.week) return false
-      }
-      if (filters.persona !== 'All' && ad.persona !== filters.persona) return false
-      if (filters.conceptCode !== 'All' && ad.concept_code !== filters.conceptCode) return false
-      if (filters.performanceCategory !== 'All' && ad.performance_category !== filters.performanceCategory) return false
-      if (filters.status !== 'All' && ad.status !== filters.status) return false
-      
-      if (filters.searchQuery) {
-        const query = filters.searchQuery.toLowerCase()
-        return ad.ad_name?.toLowerCase().includes(query) ||
-               ad.concept_code?.toLowerCase().includes(query) ||
-               ad.persona?.toLowerCase().includes(query) ||
-               ad.batch?.toLowerCase().includes(query)
-      }
-      
-      return true
-    })
-
-    setAnalytics(filteredData)
+  // Apply filters - use different data source based on level
+  const getDataForLevel = () => {
+    switch(analyticsLevel) {
+      case 'campaign':
+        return campaigns
+      case 'adset':
+        return adsets
+      case 'creative':
+        return ads
+      default:
+        return campaigns
+    }
   }
 
-  const [analytics, setAnalytics] = useState<any[]>([])
+  const currentData = getDataForLevel()
+  
+  const filteredData = currentData.filter((item: any) => {
+    if (analyticsLevel === 'campaign') {
+      if (filters.campaign !== 'All' && item.campaign_name !== filters.campaign) return false
+      if (filters.device !== 'All' && item.primary_device !== filters.device) return false
+      if (filters.country !== 'All' && item.primary_country !== filters.country) return false
+      if (filters.status !== 'All' && item.status !== filters.status) return false
+    } else if (analyticsLevel === 'adset') {
+      if (filters.device !== 'All' && item.primary_device !== filters.device) return false
+      if (filters.country !== 'All' && item.primary_country !== filters.country) return false
+      if (filters.status !== 'All' && item.status !== filters.status) return false
+    } else {
+      // creative level
+      if (filters.campaign !== 'All' && item.batch !== filters.campaign) return false
+      if (filters.device !== 'All' && item.primary_device !== filters.device) return false
+      if (filters.country !== 'All' && item.primary_country !== filters.country) return false
+      if (filters.status !== 'All' && item.status !== filters.status) return false
+    }
+    return true
+  })
 
   // Calculate totals
-  const totals = analytics.reduce((acc, ad) => {
-    const spend = parseFloat(ad.spend_7d || 0)
-    const revenue = parseFloat(ad.roas_7d || 0) * spend
-    
-    acc.spend += spend
-    acc.revenue += revenue
-    acc.impressions += parseInt(ad.impressions_7d || 0)
-    acc.clicks += parseInt(ad.clicks_7d || 0)
-    acc.conversions += parseInt(ad.conversions_7d || 0)
-    acc.count += 1
+  const totals = filteredData.reduce((acc: any, item: any) => {
+    acc.spend += item.spend_7d || 0
+    acc.revenue += item.revenue_7d || 0
+    acc.impressions += item.impressions_7d || 0
+    acc.clicks += item.clicks_7d || 0
+    acc.conversions += item.conversions_7d || 0
     return acc
-  }, {
-    spend: 0,
-    revenue: 0,
-    impressions: 0,
-    clicks: 0,
-    conversions: 0,
-    count: 0
-  })
+  }, { spend: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0 })
 
   const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
-  const overallCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) : 0
+  const overallCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0
+  const overallCpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
   const overallCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0
-  const overallCvr = totals.clicks > 0 ? totals.conversions / totals.clicks : 0
-  const overallItp = totals.impressions > 0 ? totals.conversions / totals.impressions : 0
-  const overallPp10k = totals.impressions > 0 ? (totals.conversions / totals.impressions) * 10000 : 0
 
-  // Get unique values for filters
-  const batches = ['All', ...new Set(allData.map(ad => ad.batch).filter(Boolean))].sort()
-  const weeks = ['All', ...new Set(allData.map(ad => extractWeekFromBatch(ad.batch)).filter(Boolean))].sort()
-  const personas = ['All', ...new Set(allData.map(ad => ad.persona).filter(Boolean))].sort()
-  const conceptCodes = ['All', ...new Set(allData.map(ad => ad.concept_code).filter(Boolean))].sort()
-  const performanceCategories = ['All', 'winning', 'contender', 'fatigued', 'not-spending', 'not-performing', 'paused', 'paused-winner', 'paused-fatigued']
-  const statuses = ['All', 'ACTIVE', 'PAUSED']
+  // Filter options
+  const campaignOptions = ['All', ...new Set(campaigns.map(c => c.campaign_name).filter(Boolean))].sort()
+  const deviceOptions = ['All', ...new Set(campaigns.map(c => c.primary_device).filter(Boolean))].sort()
+  const countryOptions = ['All', ...new Set(campaigns.map(c => c.primary_country).filter(Boolean))].sort()
+  const statusOptions = ['All', 'ACTIVE', 'PAUSED']
 
-  // Weekly trend data
-  const weeklyData: any = {}
-  analytics.forEach(ad => {
-    const week = ad.batch || 'Unknown'
-    if (!weeklyData[week]) {
-      weeklyData[week] = {
-        week: week,
-        spend: 0,
-        revenue: 0,
-        conversions: 0,
-        roas: 0
-      }
-    }
-    const spend = parseFloat(ad.spend_7d || 0)
-    const roas = parseFloat(ad.roas_7d || 0)
-    
-    weeklyData[week].spend += spend
-    weeklyData[week].revenue += (roas * spend)
-    weeklyData[week].conversions += parseInt(ad.conversions_7d || 0)
-  })
+  // Metric options
+  const metricOptions = [
+    { value: 'spend_7d', label: 'Spend' },
+    { value: 'revenue_7d', label: 'Revenue' },
+    { value: 'roas_7d', label: 'ROAS' },
+    { value: 'impressions_7d', label: 'Impressions' },
+    { value: 'clicks_7d', label: 'Clicks' },
+    { value: 'conversions_7d', label: 'Conversions' },
+    { value: 'cpm_7d', label: 'CPM' },
+    { value: 'ctr_7d', label: 'CTR' },
+    { value: 'cpi_7d', label: 'CPI' }
+  ]
 
-  const weeklyTrend = Object.values(weeklyData)
-    .map((w: any) => ({
-      ...w,
-      roas: w.spend > 0 ? w.revenue / w.spend : 0
+  // Prepare data for bar chart - Top 10 by selected metric
+  const top10Items = [...filteredData]
+    .sort((a: any, b: any) => (b[top10SortBy] || 0) - (a[top10SortBy] || 0))
+    .slice(0, 10)
+    .map((item: any) => ({
+      name: (analyticsLevel === 'campaign' ? item.campaign_name : 
+             analyticsLevel === 'adset' ? item.adset_name || item.name :
+             item.ad_name)?.substring(0, 30) || 'Unknown',
+      spend: item.spend_7d,
+      revenue: item.revenue_7d,
+      roas: item.roas_7d,
+      conversions: item.conversions_7d,
+      impressions: item.impressions_7d
     }))
-    .sort((a: any, b: any) => a.week.localeCompare(b.week))
-    .slice(-12)
+
+  // Prepare data for pie chart - Spend by device
+  const deviceData = Object.entries(
+    filteredData.reduce((acc: any, item: any) => {
+      const device = item.primary_device || 'Unknown'
+      acc[device] = (acc[device] || 0) + item.spend_7d
+      return acc
+    }, {})
+  ).map(([name, value]) => ({ name, value }))
+
+  // Prepare data for line chart - Campaign comparison over time/metric
+  const comparisonData = prepareComparisonData()
+  
+  function prepareComparisonData() {
+    if (selectedCampaigns.length === 0) return []
+
+    // Always show as line graph comparing selected items
+    const dataMap: any = {}
+    
+    selectedCampaigns.forEach(itemName => {
+      const item = currentData.find((d: any) => {
+        if (analyticsLevel === 'campaign') return d.campaign_name === itemName
+        if (analyticsLevel === 'adset') return (d.adset_name || d.name) === itemName
+        return d.ad_name === itemName
+      })
+      
+      if (item) {
+        const week = item.week || extractWeek(item.campaign_name || item.batch || '')
+        const weekKey = `Week ${week}`
+        
+        if (!dataMap[weekKey]) {
+          dataMap[weekKey] = { week: weekKey }
+        }
+        
+        dataMap[weekKey][itemName] = item[lineMetricY] || 0
+      }
+    })
+
+    return Object.values(dataMap).sort((a: any, b: any) => {
+      const aWeek = parseInt(a.week.replace('Week ', '') || '0')
+      const bWeek = parseInt(b.week.replace('Week ', '') || '0')
+      return aWeek - bWeek
+    })
+  }
+
+  // Toggle campaign selection
+  const toggleCampaignSelection = (campaignName: string) => {
+    if (selectedCampaigns.includes(campaignName)) {
+      setSelectedCampaigns(selectedCampaigns.filter(c => c !== campaignName))
+    } else if (selectedCampaigns.length < 5) {
+      setSelectedCampaigns([...selectedCampaigns, campaignName])
+    }
+  }
+
+  const COLORS = ['#06B6D4', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444']
 
   if (loading) {
     return (
@@ -170,50 +268,37 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
 
   return (
     <div className="space-y-6">
-      {/* Date Range & Compare Mode */}
-      <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Date Range</span>
-            
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              className={`px-4 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              <option value="last_7d">Last 7 Days</option>
-              <option value="last_14d">Last 14 Days</option>
-              <option value="last_30d">Last 30 Days</option>
-              <option value="this_week">This Week</option>
-              <option value="last_week">Last Week</option>
-              <option value="this_month">This Month</option>
-            </select>
-          </div>
-
-          <button
-            onClick={() => setCompareMode(!compareMode)}
-            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
-              compareMode
-                ? 'bg-cyan-600 text-white'
-                : isDark 
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+      {/* Header with Level Selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Advanced Analytics
+          </h1>
+          <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Deep-dive analysis with campaign comparisons and performance trends
+          </p>
+        </div>
+        <div>
+          <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Analytics Level
+          </label>
+          <select
+            value={analyticsLevel}
+            onChange={(e) => setAnalyticsLevel(e.target.value as any)}
+            className={`px-4 py-2 text-sm rounded-lg border font-medium ${
+              isDark 
+                ? 'bg-gray-700 border-gray-600 text-white' 
+                : 'bg-white border-gray-300 text-gray-900'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              {compareMode ? 'Comparing...' : 'Compare vs Previous'}
-            </div>
-          </button>
+            <option value="campaign">Campaign Analytics</option>
+            <option value="adset">Ad Set Analytics</option>
+            <option value="creative">Creative Analytics</option>
+          </select>
         </div>
       </div>
 
-      {/* Filters Section */}
+      {/* Filters */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-2 mb-4">
           <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,211 +307,287 @@ export default function AnalyticsPage({ isDark }: { isDark?: boolean }) {
           <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Filters</h3>
         </div>
 
-        <div className="grid grid-cols-7 gap-4 mb-4">
-          {/* Status Filter */}
+        <div className="grid grid-cols-4 gap-4">
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Campaign</label>
+            <select value={filters.campaign} onChange={(e) => setFilters({...filters, campaign: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              {campaignOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Device</label>
+            <select value={filters.device} onChange={(e) => setFilters({...filters, device: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              {deviceOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Country</label>
+            <select value={filters.country} onChange={(e) => setFilters({...filters, country: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              {countryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Status</label>
-            <select
-              value={filters.status}
-              onChange={(e) => setFilters({...filters, status: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            <select value={filters.status} onChange={(e) => setFilters({...filters, status: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-          </div>
-
-          {/* Batch Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Batch</label>
-            <select
-              value={filters.batch}
-              onChange={(e) => setFilters({...filters, batch: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {batches.map(batch => <option key={batch} value={batch}>{batch}</option>)}
-            </select>
-          </div>
-
-          {/* Week Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Week</label>
-            <select
-              value={filters.week}
-              onChange={(e) => setFilters({...filters, week: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {weeks.map(week => <option key={week} value={week}>{week}</option>)}
-            </select>
-          </div>
-
-          {/* Persona Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Persona</label>
-            <select
-              value={filters.persona}
-              onChange={(e) => setFilters({...filters, persona: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {personas.map(persona => <option key={persona} value={persona}>{persona}</option>)}
-            </select>
-          </div>
-
-          {/* Concept Code Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Concept</label>
-            <select
-              value={filters.conceptCode}
-              onChange={(e) => setFilters({...filters, conceptCode: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {conceptCodes.map(code => <option key={code} value={code}>{code}</option>)}
-            </select>
-          </div>
-
-          {/* Performance Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Performance</label>
-            <select
-              value={filters.performanceCategory}
-              onChange={(e) => setFilters({...filters, performanceCategory: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-            >
-              {performanceCategories.map(cat => <option key={cat} value={cat}>{cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}</option>)}
-            </select>
-          </div>
-
-          {/* Search Filter */}
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Search</label>
-            <input
-              type="text"
-              placeholder="Search..."
-              value={filters.searchQuery}
-              onChange={(e) => setFilters({...filters, searchQuery: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`}
-            />
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex justify-between items-center mt-4">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing {totals.count} ads
+            Showing {filteredData.length} {analyticsLevel === 'campaign' ? 'campaigns' : analyticsLevel === 'adset' ? 'ad sets' : 'creatives'}
           </div>
-          <button
-            onClick={() => setFilters({ batch: 'All', week: 'All', persona: 'All', conceptCode: 'All', performanceCategory: 'All', status: 'All', searchQuery: '' })}
-            className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-          >
+          <button onClick={() => setFilters({ campaign: 'All', device: 'All', country: 'All', status: 'All' })}
+            className={`px-4 py-2 text-sm rounded-lg ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'}`}>
             Clear Filters
           </button>
         </div>
       </div>
 
-      {/* Overview Stats - 5 Cards */}
-      <div className="grid grid-cols-5 gap-4">
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Spend</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ${totals.spend.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+      {/* Summary Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Spend</div>
+          <div className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            ${(totals.spend / 1000).toFixed(1)}K
           </div>
         </div>
-
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Revenue</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            ${totals.revenue.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Revenue</div>
+          <div className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            ${(totals.revenue / 1000).toFixed(1)}K
           </div>
         </div>
-
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Overall ROAS</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Overall ROAS</div>
+          <div className={`text-3xl font-bold ${overallRoas >= 2 ? 'text-green-600' : overallRoas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
             {overallRoas.toFixed(2)}x
           </div>
         </div>
-
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Conversions</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className={`text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Conversions</div>
+          <div className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
             {totals.conversions.toLocaleString()}
           </div>
         </div>
-
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Ads</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {totals.count}
-          </div>
-        </div>
       </div>
 
-      {/* Mid & Bottom Funnel Metrics */}
+      {/* Top 10 - Bar Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Mid & Bottom Funnel Indicators
-        </h3>
-        <div className="grid grid-cols-5 gap-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Top 10 {analyticsLevel === 'campaign' ? 'Campaigns' : analyticsLevel === 'adset' ? 'Ad Sets' : 'Creatives'}
+          </h3>
           <div>
-            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CTR</div>
-            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {(overallCtr * 100).toFixed(2)}%
-            </div>
-          </div>
-
-          <div>
-            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CPC</div>
-            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              ${overallCpc.toFixed(2)}
-            </div>
-          </div>
-
-          <div>
-            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CVR</div>
-            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {(overallCvr * 100).toFixed(2)}%
-            </div>
-          </div>
-
-          <div>
-            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>ITP</div>
-            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {(overallItp * 100).toFixed(3)}%
-            </div>
-          </div>
-
-          <div>
-            <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>PP10K</div>
-            <div className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {overallPp10k.toFixed(1)}
-            </div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Sort By</label>
+            <select value={top10SortBy} onChange={(e) => setTop10SortBy(e.target.value)}
+              className={`px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              <option value="spend_7d">Spend</option>
+              <option value="revenue_7d">Revenue</option>
+              <option value="roas_7d">ROAS</option>
+              <option value="conversions_7d">Conversions</option>
+              <option value="impressions_7d">Impressions</option>
+            </select>
           </div>
         </div>
-      </div>
-
-      {/* Weekly Trend Chart */}
-      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Performance Trend (Last 12 Weeks)
-        </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={weeklyTrend}>
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart data={top10Items} layout="horizontal">
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
-            <XAxis dataKey="week" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
+            <XAxis 
+              type="category"
+              dataKey="name" 
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              tick={{ fontSize: 11 }}
+              interval={0}
+            />
+            <YAxis type="number" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
+            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: '8px' }} />
+            <Legend />
+            <Bar dataKey="spend" fill="#06B6D4" name="Spend ($)" />
+            <Bar dataKey="revenue" fill="#10B981" name="Revenue ($)" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Spend Distribution - Pie Chart */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Spend Distribution by Device
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie data={deviceData} cx="50%" cy="50%" labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80} fill="#8884d8" dataKey="value">
+                {deviceData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderRadius: '8px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            Performance Metrics
+          </h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CTR</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{overallCtr.toFixed(2)}%</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CPM</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${overallCpm.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>CPC</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${overallCpc.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Impressions</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{(totals.impressions / 1000000).toFixed(2)}M</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Clicks</span>
+              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{(totals.clicks / 1000).toFixed(1)}K</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Head-to-Head Comparison - Line Chart */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {analyticsLevel === 'campaign' ? 'Campaign' : analyticsLevel === 'adset' ? 'Ad Set' : 'Creative'} Head-to-Head Comparison
+            </h3>
+            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Select up to 5 {analyticsLevel === 'campaign' ? 'campaigns' : analyticsLevel === 'adset' ? 'ad sets' : 'creatives'} to compare trends over time
+            </p>
+          </div>
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Metric</label>
+            <select value={lineMetricY} onChange={(e) => setLineMetricY(e.target.value)}
+              className={`px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+              {metricOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Selector Pills */}
+        <div className="mb-6">
+          <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Select {analyticsLevel === 'campaign' ? 'Campaigns' : analyticsLevel === 'adset' ? 'Ad Sets' : 'Creatives'} (max 5)
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {campaignOptions.filter(c => c !== 'All').map(campaign => (
+              <button key={campaign} onClick={() => toggleCampaignSelection(campaign)}
+                className={`px-3 py-2 text-xs rounded-lg transition-colors text-left truncate ${
+                  selectedCampaigns.includes(campaign)
+                    ? 'bg-cyan-600 text-white'
+                    : isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                title={campaign}>
+                {campaign}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {selectedCampaigns.length > 0 ? (
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart data={comparisonData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
+              <XAxis dataKey="week" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
+              <YAxis stroke={isDark ? '#9CA3AF' : '#6B7280'} />
+              <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderRadius: '8px' }} />
+              <Legend />
+              {selectedCampaigns.map((itemName, index) => (
+                <Line 
+                  key={itemName} 
+                  type="monotone" 
+                  dataKey={itemName} 
+                  stroke={COLORS[index % COLORS.length]} 
+                  strokeWidth={3} 
+                  dot={{ r: 5 }}
+                  activeDot={{ r: 7 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className={`text-center py-16 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            Select {analyticsLevel === 'campaign' ? 'campaigns' : analyticsLevel === 'adset' ? 'ad sets' : 'creatives'} above to see the comparison
+          </div>
+        )}
+      </div>
+
+      {/* Performance Trend - Line Graph */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Performance Trend Analysis
+            </h3>
+            <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              View performance trends across all {analyticsLevel === 'campaign' ? 'campaigns' : analyticsLevel === 'adset' ? 'ad sets' : 'creatives'}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <div>
+              <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Metric</label>
+              <select value={scatterMetricY} onChange={(e) => setScatterMetricY(e.target.value)}
+                className={`px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
+                {metricOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={filteredData.slice(0, 20).map((item: any, index: number) => ({
+            name: index + 1,
+            value: item[scatterMetricY] || 0,
+            label: (analyticsLevel === 'campaign' ? item.campaign_name : 
+                   analyticsLevel === 'adset' ? item.adset_name || item.name :
+                   item.ad_name)?.substring(0, 15) || 'Unknown'
+          }))}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
+            <XAxis 
+              dataKey="name" 
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              label={{ value: `Top 20 ${analyticsLevel === 'campaign' ? 'Campaigns' : analyticsLevel === 'adset' ? 'Ad Sets' : 'Creatives'}`, position: 'insideBottom', offset: -5 }}
+            />
             <YAxis stroke={isDark ? '#9CA3AF' : '#6B7280'} />
             <Tooltip 
-              contentStyle={{ 
-                backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-                border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
-                borderRadius: '8px'
-              }}
-              labelStyle={{ color: isDark ? '#F3F4F6' : '#111827' }}
+              contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderRadius: '8px' }}
+              formatter={(value: any, name: string, props: any) => [
+                `${metricOptions.find(m => m.value === scatterMetricY)?.label}: ${typeof value === 'number' ? value.toFixed(2) : value}`,
+                props.payload.label
+              ]}
             />
-            <Legend />
-            <Line type="monotone" dataKey="spend" stroke="#06B6D4" strokeWidth={2} name="Spend ($)" />
-            <Line type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} name="Revenue ($)" />
-            <Line type="monotone" dataKey="conversions" stroke="#8B5CF6" strokeWidth={2} name="Conversions" />
-            <Line type="monotone" dataKey="roas" stroke="#F59E0B" strokeWidth={2} name="ROAS" />
+            <Line 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#8B5CF6" 
+              strokeWidth={3}
+              dot={{ fill: '#8B5CF6', r: 5 }}
+              activeDot={{ r: 7 }}
+            />
           </LineChart>
         </ResponsiveContainer>
+        <div className={`text-xs text-center mt-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          📈 Showing top 20 {analyticsLevel === 'campaign' ? 'campaigns' : analyticsLevel === 'adset' ? 'ad sets' : 'creatives'} by spend
+        </div>
       </div>
     </div>
   )
