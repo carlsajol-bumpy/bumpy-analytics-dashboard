@@ -57,8 +57,8 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         return
       }
 
-      console.log('📊 Total ads fetched:', adsData?.length)
-      console.log('📊 Sample raw ad data:', adsData?.[0])
+      console.log(' Total ads fetched:', adsData?.length)
+      console.log(' Sample raw ad data:', adsData?.[0])
 
       if (!adsData || adsData.length === 0) {
         console.warn('No ads found')
@@ -93,8 +93,8 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       })
 
-      console.log('📊 Total ads enriched:', enrichedAds.length)
-      console.log('📊 Sample ad with revenue:', enrichedAds.find(ad => ad.revenue_7d > 0) || enrichedAds[0])
+      console.log(' Total ads enriched:', enrichedAds.length)
+      console.log(' Sample ad with revenue:', enrichedAds.find(ad => ad.revenue_7d > 0) || enrichedAds[0])
       setAds(enrichedAds)
     } catch (err) {
       console.error('Error:', err)
@@ -586,7 +586,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                           <tr className={`${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
                             <td className="px-4 py-2"></td>
                             <td className={`px-4 py-2 text-sm ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
-                              <span className="ml-6">📊 {conceptName}</span>
+                              <span className="ml-6"> {conceptName}</span>
                               <span className={`ml-2 text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
                                 {conceptAds.length} ads
                               </span>
