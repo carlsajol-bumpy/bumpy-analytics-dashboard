@@ -9,10 +9,11 @@ import SettingsPage from './SettingsPage'
 import AlertSystem from './AlertSystem'
 import CampaignLevelView from './CampaignLevelView'
 import AdSetLevelView from './AdSetLevelView'
+import ConceptPerformanceView from './ConceptPerformanceView'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('alerts')
-  const [viewLevel, setViewLevel] = useState<'campaign' | 'adset' | 'creative'>('campaign')
+  const [viewLevel, setViewLevel] = useState<'campaign' | 'adset' | 'creative' | 'concept'>('campaign')
   const [isDark, setIsDark] = useState(true)
 
   return (
@@ -124,6 +125,20 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                 </svg>
                 <span className="text-sm font-medium">Creatives</span>
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('performance'); setViewLevel('concept') }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
+                  activeTab === 'performance' && viewLevel === 'concept'
+                    ? isDark ? 'bg-cyan-600 text-white' : 'bg-cyan-50 text-cyan-700'
+                    : isDark ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="text-sm font-medium">By Concept</span>
               </button>
             </div>
 
@@ -241,11 +256,13 @@ export default function Home() {
                     {viewLevel === 'campaign' && 'Campaign Performance'}
                     {viewLevel === 'adset' && 'Ad Set Performance'}
                     {viewLevel === 'creative' && 'Creative Performance'}
+                    {viewLevel === 'concept' && 'Performance by Concept'}
                   </h2>
                   <p className={`mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                     {viewLevel === 'campaign' && 'Campaign-level aggregated metrics with filters'}
                     {viewLevel === 'adset' && 'Ad set-level performance breakdown'}
                     {viewLevel === 'creative' && 'Individual ad creative performance'}
+                    {viewLevel === 'concept' && 'See which concepts are performing in each campaign'}
                   </p>
                 </div>
 
@@ -268,6 +285,12 @@ export default function Home() {
                     }`}>
                     Creatives
                   </button>
+                  <button onClick={() => setViewLevel('concept')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      viewLevel === 'concept' ? 'bg-cyan-600 text-white' : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                    }`}>
+                    By Concept
+                  </button>
                 </div>
               </div>
             </div>
@@ -275,6 +298,7 @@ export default function Home() {
             {viewLevel === 'campaign' && <CampaignLevelView isDark={isDark} />}
             {viewLevel === 'adset' && <AdSetLevelView isDark={isDark} />}
             {viewLevel === 'creative' && <ExplorerSection isDark={isDark} />}
+            {viewLevel === 'concept' && <ConceptPerformanceView isDark={isDark} />}
           </div>
         )}
 
