@@ -262,6 +262,14 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     return result
   }).sort((a, b) => a.week.localeCompare(b.week))
 
+  // Debug weekly trend when persona filter is active
+  if (filters.persona.length > 0) {
+    console.log('📊 Weekly Trend Data:', weeklyTrend)
+    console.log('📊 Sample week data:', weeklyTrend[0])
+    console.log('📊 Persona Aggregated (for chart):', personaAggregated)
+    console.log('📊 Top 5 personas to show:', personaAggregated.slice(0, 5).map(p => p.persona))
+  }
+
   // Calculate totals
   const totals = filteredData.reduce((acc, row) => {
     acc.spend += row.spend || 0
@@ -304,7 +312,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       {/* Header */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          📊 Creative Persona Report
+          Creative Persona Report
         </h2>
         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
           Analyze performance by persona and week
@@ -435,7 +443,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             </svg>
             <div className="flex-1">
               <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-yellow-400' : 'text-yellow-800'}`}>
-                ⚠️ No Data Found
+                No Data Found
               </h3>
               <p className={`text-sm mb-3 ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
                 No data found for persona: <span className="font-semibold">{filters.persona.join(', ')}</span>
@@ -448,7 +456,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                   <li>The ad name format for this persona is different</li>
                 </ul>
                 <p className="mt-3">
-                  💡 <strong>Tip:</strong> Open the browser console (F12) to see debug logs showing:
+                  <strong>Tip:</strong> Open the browser console (F12) to see debug logs showing:
                 </p>
                 <ul className="list-disc list-inside space-y-1 ml-2">
                   <li>All unique persona values in the data</li>
@@ -592,7 +600,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         
         {personaOptions.length > 6 && (
           <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            💡 Showing top 5 personas by spend. Use filters above to see specific personas.
+            Showing top 5 personas by spend. Use filters above to see specific personas.
           </div>
         )}
       </div>
