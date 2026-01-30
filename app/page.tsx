@@ -10,10 +10,11 @@ import AlertSystem from './AlertSystem'
 import CampaignLevelView from './CampaignLevelView'
 import AdSetLevelView from './AdSetLevelView'
 import ConceptPerformanceView from './ConceptPerformanceView'
+import CreativePersonaReportView from './CreativePersonaReportView'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('alerts')
-  const [viewLevel, setViewLevel] = useState<'campaign' | 'adset' | 'creative' | 'concept'>('campaign')
+  const [viewLevel, setViewLevel] = useState<'campaign' | 'adset' | 'creative' | 'concept' | 'persona'>('campaign') // ✅ ADDED 'persona'
   const [isDark, setIsDark] = useState(true)
 
   return (
@@ -140,6 +141,21 @@ export default function Home() {
                 </svg>
                 <span className="text-sm font-medium">By Concept</span>
               </button>
+
+              {/* ✅ NEW: Persona Report Button */}
+              <button
+                onClick={() => { setActiveTab('performance'); setViewLevel('persona') }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
+                  activeTab === 'performance' && viewLevel === 'persona'
+                    ? isDark ? 'bg-cyan-600 text-white' : 'bg-cyan-50 text-cyan-700'
+                    : isDark ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="text-sm font-medium">By Persona</span>
+              </button>
             </div>
 
             <button
@@ -257,12 +273,14 @@ export default function Home() {
                     {viewLevel === 'adset' && 'Ad Set Performance'}
                     {viewLevel === 'creative' && 'Creative Performance'}
                     {viewLevel === 'concept' && 'Performance by Concept'}
+                    {viewLevel === 'persona' && 'Performance by Persona'} {/* ✅ NEW */}
                   </h2>
                   <p className={`mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                     {viewLevel === 'campaign' && 'Campaign-level aggregated metrics with filters'}
                     {viewLevel === 'adset' && 'Ad set-level performance breakdown'}
                     {viewLevel === 'creative' && 'Individual ad creative performance'}
                     {viewLevel === 'concept' && 'See which concepts are performing in each campaign'}
+                    {viewLevel === 'persona' && 'Analyze weekly performance trends across personas'} {/* ✅ NEW */}
                   </p>
                 </div>
 
@@ -291,6 +309,13 @@ export default function Home() {
                     }`}>
                     By Concept
                   </button>
+                  {/* ✅ NEW: Persona Toggle Button */}
+                  <button onClick={() => setViewLevel('persona')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      viewLevel === 'persona' ? 'bg-cyan-600 text-white' : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                    }`}>
+                    By Persona
+                  </button>
                 </div>
               </div>
             </div>
@@ -299,6 +324,7 @@ export default function Home() {
             {viewLevel === 'adset' && <AdSetLevelView isDark={isDark} />}
             {viewLevel === 'creative' && <ExplorerSection isDark={isDark} />}
             {viewLevel === 'concept' && <ConceptPerformanceView isDark={isDark} />}
+            {viewLevel === 'persona' && <CreativePersonaReportView isDark={isDark} />} {/* ✅ NEW */}
           </div>
         )}
 
