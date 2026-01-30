@@ -225,6 +225,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       const week = row.week || 'Unknown'
       const persona = row.persona || 'Unknown'
       
+      // Debug log for first few rows when 3040 is filtered
+      if (filters.persona.includes('3040') && Object.keys(acc).length < 3) {
+        console.log('📊 [Reduce] Processing row:', {
+          week,
+          persona,
+          spend: row.spend,
+          ad_name: row.ad_name?.substring(0, 50)
+        })
+      }
+      
       if (!acc[week]) {
         acc[week] = {
           week,
@@ -239,11 +249,19 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         acc[week][spendKey] = 0
         acc[week][roasKey] = 0
         acc[week][`${persona}_revenue`] = 0
+        
+        if (filters.persona.includes('3040') && persona === '3040') {
+          console.log(`📊 [Reduce] Created new key "${spendKey}" for week "${week}"`)
+        }
       }
       
       acc[week][spendKey] += row.spend || 0
       acc[week][`${persona}_revenue`] += row.revenue || 0
       acc[week].total_revenue += row.revenue || 0
+      
+      if (filters.persona.includes('3040') && persona === '3040' && Object.keys(acc).length === 1) {
+        console.log(`📊 [Reduce] After adding: ${spendKey} = ${acc[week][spendKey]}`)
+      }
       
       return acc
     }, {})
