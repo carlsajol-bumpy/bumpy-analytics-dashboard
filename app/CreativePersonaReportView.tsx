@@ -121,17 +121,19 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         const impressions = parseInt(row['Impressions'] || 0)
         const linkClicks = parseInt(row['Link clicks'] || 0)
         
-        // Use Week column AS-IS - it's already formatted correctly!
-        const weekRaw = row['Week'] || ''
+        // Try multiple column name variations (capitalized, lowercase, uppercase)
+        const weekValue = row['Week'] || row['week'] || row['WEEK'] || ''
+        const personaValue = row['Persona'] || row['persona'] || row['PERSONA'] || extractPersona(adName) || 'Unknown'
+        const conceptValue = row['Concept'] || row['concept'] || row['CONCEPT'] || extractConceptCode(adName) || 'Unknown'
         
         return {
           ...row,
-          // Use existing Persona and Concept columns from Supabase (don't extract!)
-          persona: row['Persona'] || row['PERSONA'] || extractPersona(adName) || 'Unknown',
-          concept_code: row['Concept'] || row['CONCEPT'] || extractConceptCode(adName) || 'Unknown',
+          // Use existing columns from Supabase data (try all case variations)
+          week: weekValue,
+          week_raw: weekValue,
+          persona: personaValue,
+          concept_code: conceptValue,
           // Normalize column names for easier access
-          week: weekRaw,  // Use raw week value directly!
-          week_raw: weekRaw,
           campaign_name: campaignName,
           ad_name: adName,
           spend: amountSpent,
@@ -150,6 +152,19 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       console.log('📊 Enriched with persona/concept:', enrichedData[0])
       console.log('📊 Sample persona:', enrichedData[0]?.persona)
       console.log('📊 Sample concept:', enrichedData[0]?.concept_code)
+      console.log('📊 Sample week:', enrichedData[0]?.week)
+      
+      // Find and log any 3040 rows to verify they exist
+      const sample3040 = enrichedData.filter(d => d.persona === '3040').slice(0, 3)
+      console.log('📊 Sample 3040 rows found:', sample3040.length)
+      if (sample3040.length > 0) {
+        console.log('📊 First 3040 row:', {
+          persona: sample3040[0].persona,
+          spend: sample3040[0].spend,
+          week: sample3040[0].week,
+          ad_name: sample3040[0].ad_name?.substring(0, 50)
+        })
+      }
       setData(enrichedData)
     } catch (err) {
       console.error('Error:', err)
@@ -231,7 +246,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
   })).sort((a, b) => b.spend - a.spend)
 
   // Weekly trend by persona
-  const weeklyTrend = Object.entries(
+  const weeklyTrendRaw = Object.entries(
     filteredData.reduce((acc: any, row) => {
       const week = row.week || 'Unknown'
       const persona = row.persona || 'Unknown'
@@ -276,8 +291,17 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       
       return acc
     }, {})
-  ).map(([week, data]: [string, any]) => {
+  )
+  
+  const weeklyTrend = weeklyTrendRaw.map(([week, data]: [string, any], index: number) => {
     const result: any = { week, total_revenue: data.total_revenue }
+    
+    // Debug: log what keys exist in data before mapping (first week only)
+    if (filters.persona.includes('3040') && index === 0) {
+      console.log(`📊 [Map] First week "${week}" data keys:`, Object.keys(data))
+      console.log(`📊 [Map] Has 3040_spend:`, '3040_spend' in data)
+      console.log(`📊 [Map] 3040_spend value:`, data['3040_spend'])
+    }
     
     personaOptions.slice(1).forEach(persona => {
       const spendKey = `${persona}_spend`
@@ -286,6 +310,11 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       
       result[spendKey] = data[spendKey] || 0
       result[roasKey] = data[spendKey] > 0 ? (data[revenueKey] || 0) / data[spendKey] : 0
+      
+      // Debug: log when we're adding 3040 keys (first week only)
+      if (filters.persona.includes('3040') && persona === '3040' && index === 0) {
+        console.log(`📊 [Map] Adding key "${spendKey}" with value:`, result[spendKey])
+      }
     })
     
     return result
@@ -299,10 +328,10 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       persona: d.persona,
       spend: d.spend,
       week: d.week,
-      ad_name: d.ad_name
+      ad_name: d.ad_name?.substring(0, 40)
     })))
     console.log('📊 Weekly Trend Length:', weeklyTrend.length)
-    console.log('📊 Weekly Trend Data (first 3 weeks):', weeklyTrend.slice(0, 3))
+    console.log('📊 Weekly Trend Data (ALL weeks):', weeklyTrend)
     console.log('📊 Persona Aggregated:', personaAggregated)
     console.log('📊 Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
       persona: p.persona,
@@ -320,6 +349,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       console.log(`   First week value:`, weeklyTrend[0][dataKey])
       console.log(`   All keys in first week:`, Object.keys(weeklyTrend[0]))
       
+      // IMPORTANT: Check ALL weeks for this key
+      const weeksWithData = weeklyTrend.filter(w => w[dataKey] && w[dataKey] > 0)
+      console.log(`📊 Weeks with ${dataKey} > 0:`, weeksWithData.length, '/', weeklyTrend.length)
+      if (weeksWithData.length > 0) {
+        console.log(`📊 Sample weeks with data:`, weeksWithData.slice(0, 3).map(w => ({
+          week: w.week,
+          spend: w[dataKey]
+        })))
+      }
+      
       // Check scale issue
       const maxSpend = Math.max(...weeklyTrend.map(w => w[dataKey] || 0))
       const maxRevenue = Math.max(...weeklyTrend.map(w => w.total_revenue || 0))
@@ -327,8 +366,11 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       console.log(`   Max weekly spend: $${maxSpend}`)
       console.log(`   Max weekly revenue: $${maxRevenue}`)
       console.log(`   Ratio: ${maxRevenue > 0 ? (maxSpend / maxRevenue * 100).toFixed(2) : 0}% (spend vs revenue)`)
-      if (maxSpend < maxRevenue * 0.1) {
+      if (maxSpend < maxRevenue * 0.1 && maxSpend > 0) {
         console.warn('⚠️ WARNING: Spend values are <10% of revenue! Line may be barely visible at bottom of chart!')
+      }
+      if (maxSpend === 0) {
+        console.error('🚨 ERROR: Max spend is $0! No data in weeklyTrend for this persona!')
       }
     }
   }
