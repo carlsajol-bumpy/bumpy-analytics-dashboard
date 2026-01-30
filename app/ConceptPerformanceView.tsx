@@ -39,12 +39,12 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
   const [showDatePicker, setShowDatePicker] = useState(false)
   
-  // Filters with multi-select support
+  // Filters with multi-select support for BOTH concept and persona
   const [filters, setFilters] = useState({
     campaign: 'All',
     device: 'All',
     country: 'All',
-    persona: 'All',
+    persona: [] as string[], // ✅ CHANGED to multi-select array
     concept: [] as string[],
     status: 'All',
     minSpend: 0,
@@ -62,7 +62,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
       const { data: adsData, error: adsError } = await supabase
         .from('creative_performance')
         .select('*')
-        .limit(50000) // Increased to capture more campaigns
+        .limit(50000)
 
       if (adsError) {
         console.error('Error fetching ads:', adsError)
@@ -70,16 +70,8 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         return
       }
 
-      console.log(' Total ads fetched:', adsData?.length)
-      console.log(' Sample raw ad data:', adsData?.[0])
-      
-      // Debug campaign data quality
-      const campaignValues = adsData.map(ad => ad.batch || ad.campaign_name)
-      const uniqueCampaigns = new Set(campaignValues.filter(Boolean))
-      const emptyCampaigns = campaignValues.filter(v => !v).length
-      console.log(' Total unique campaigns in data:', uniqueCampaigns.size)
-      console.log(' Ads with missing campaign names:', emptyCampaigns)
-      console.log(' Sample campaigns:', Array.from(uniqueCampaigns).slice(0, 5))
+      console.log('📊 Total ads fetched:', adsData?.length)
+      console.log('📊 Sample raw ad data:', adsData?.[0])
       
       if (adsData?.length >= 50000) {
         console.warn('⚠️ WARNING: Hit query limit! Some campaigns may be missing.')
@@ -106,7 +98,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         const clicks_prev = parseInt(ad.clicks_prev || 0)
         const conversions_prev = parseInt(ad.conversions_prev || 0)
         
-        // Add 28d and 30d metrics
         const spend_28d = parseFloat(ad.spend_28d || 0)
         const roas_28d = parseFloat(ad.roas_28d || 0)
         const revenue_28d = roas_28d * spend_28d
@@ -158,7 +149,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       })
 
-      console.log(' Total ads enriched:', enrichedAds.length)
+      console.log('📊 Total ads enriched:', enrichedAds.length)
       setAds(enrichedAds)
     } catch (err) {
       console.error('Error:', err)
@@ -176,7 +167,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     }
   }
 
-  // Get date range label for display
   const getDateRangeLabel = (range: DateRangeOption): string => {
     const labels: Record<DateRangeOption, string> = {
       'today': 'Today',
@@ -193,15 +183,12 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     return labels[range]
   }
 
-  // Map date ranges to data availability
-  // Column mapping: _7d = 7 days, _prev = 14 days, _28d = 28 days, _30d = 30 days
   const getFilteredDataByDateRange = (ad: any) => {
     switch (filters.dateRange) {
       case 'today':
       case 'yesterday':
       case 'last_7d':
       case 'this_week':
-        // Use 7-day columns
         return {
           spend: ad.spend_7d || 0,
           revenue: ad.revenue_7d || 0,
@@ -214,7 +201,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       case 'last_week':
       case 'last_14d':
-        // Use _prev columns (which contain 14-day data)
         return {
           spend: ad.spend_prev || 0,
           revenue: ad.revenue_prev || 0,
@@ -227,7 +213,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       case 'last_28d':
       case 'this_month':
-        // Use 28-day columns
         return {
           spend: ad.spend_28d || 0,
           revenue: ad.revenue_28d || 0,
@@ -240,7 +225,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       case 'last_30d':
       case 'last_month':
-        // Use 30-day columns
         return {
           spend: ad.spend_30d || 0,
           revenue: ad.revenue_30d || 0,
@@ -269,7 +253,10 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     if (filters.campaign !== 'All' && ad.batch !== filters.campaign) return false
     if (filters.device !== 'All' && ad.primary_device !== filters.device) return false
     if (filters.country !== 'All' && ad.primary_country !== filters.country) return false
-    if (filters.persona !== 'All' && ad.persona !== filters.persona) return false
+    
+    // ✅ UPDATED: Multi-select persona filter
+    if (filters.persona.length > 0 && !filters.persona.includes(ad.persona)) return false
+    
     if (filters.concept.length > 0 && !filters.concept.includes(ad.concept_code)) return false
     if (filters.status !== 'All' && ad.status !== filters.status) return false
     
@@ -320,7 +307,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
 
   const sortedCampaigns = Object.values(campaignGroups).sort((a: any, b: any) => b.total_spend - a.total_spend)
   
-  // Count unique campaigns - both filtered and total
   const filteredCampaignCount = new Set(
     filteredAds.map(ad => ad.batch || ad.campaign_name).filter(v => v && v !== 'Unknown Campaign')
   ).size
@@ -338,8 +324,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
   }, { spend: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0 })
 
   const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
-  const overallCpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
-  const overallCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) : 0
 
   const campaignOptions = ['All', ...new Set(ads.map(a => a.batch).filter(Boolean))].sort()
   const deviceOptions = ['All', ...new Set(ads.map(a => a.primary_device).filter(Boolean))].sort()
@@ -437,14 +421,13 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     </svg>
   )
 
-  // Date range presets like Meta Ads
   const dateRangePresets: { label: string; value: DateRangeOption; available: boolean }[] = [
     { label: 'Today', value: 'today', available: true },
     { label: 'Yesterday', value: 'yesterday', available: true },
     { label: 'Last 7 days', value: 'last_7d', available: true },
     { label: 'Last 14 days', value: 'last_14d', available: true },
-    { label: 'Last 28 days', value: 'last_28d', available: true }, // ✅ Now available with _28d columns
-    { label: 'Last 30 days', value: 'last_30d', available: true }, // ✅ Now available with _30d columns
+    { label: 'Last 28 days', value: 'last_28d', available: true },
+    { label: 'Last 30 days', value: 'last_30d', available: true },
     { label: 'This week', value: 'this_week', available: true },
     { label: 'Last week', value: 'last_week', available: true },
     { label: 'This month', value: 'this_month', available: true },
@@ -473,13 +456,12 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Filters</h3>
         </div>
 
-        {/* Meta Ads Style Date Picker */}
+        {/* Date Range Picker */}
         <div className="mb-4">
           <label className={`block text-xs font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Date Range
+            📅 Date Range
           </label>
           
-          {/* Current Selection Display - Clickable */}
           <div className="relative">
             <button
               onClick={() => setShowDatePicker(!showDatePicker)}
@@ -498,7 +480,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
               </svg>
             </button>
 
-            {/* Dropdown Date Picker */}
             {showDatePicker && (
               <div className={`absolute z-50 mt-2 w-96 rounded-xl shadow-2xl border ${
                 isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -508,7 +489,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                     Recently used
                   </div>
                   
-                  {/* Date Range Options */}
                   <div className="space-y-1 max-h-96 overflow-y-auto">
                     {dateRangePresets.map((preset) => (
                       <button
@@ -542,16 +522,10 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                           )}
                         </div>
                         <span className="flex-1">{preset.label}</span>
-                        {!preset.available && (
-                          <span className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-gray-700 text-gray-500' : 'bg-gray-100 text-gray-500'}`}>
-                            Limited data
-                          </span>
-                        )}
                       </button>
                     ))}
                   </div>
 
-                  {/* Info about data limitations */}
                   <div className={`mt-4 p-3 rounded-lg text-xs ${isDark ? 'bg-gray-900/50 text-gray-400' : 'bg-blue-50 text-blue-700'}`}>
                     <div className="flex items-start gap-2">
                       <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -559,10 +533,10 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                       </svg>
                       <div>
                         <div className="font-semibold mb-1">Data Availability:</div>
-                        <div>• Last 7 days: Uses _7d columns (e.g., spend_7d)</div>
-                        <div>• Last 14 days: Uses _prev columns (e.g., spend_prev)</div>
-                        <div>• Last 28 days: Uses _28d columns (e.g., spend_28d)</div>
-                        <div>• Last 30 days: Uses _30d columns (e.g., spend_30d)</div>
+                        <div>• Last 7 days: Uses _7d columns</div>
+                        <div>• Last 14 days: Uses _prev columns</div>
+                        <div>• Last 28 days: Uses _28d columns</div>
+                        <div>• Last 30 days: Uses _30d columns</div>
                       </div>
                     </div>
                   </div>
@@ -571,9 +545,8 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
             )}
           </div>
 
-          {/* Current selection info */}
           <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Currently showing: <span className="font-semibold text-cyan-600">{getDateRangeLabel(filters.dateRange)}</span>
+            📊 Currently showing: <span className="font-semibold text-cyan-600">{getDateRangeLabel(filters.dateRange)}</span>
           </div>
         </div>
 
@@ -599,13 +572,33 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
               {countryOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+          
+          {/* ✅ UPDATED: Multi-select Persona filter */}
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Persona</label>
-            <select value={filters.persona} onChange={(e) => setFilters({...filters, persona: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {personaOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              Persona {filters.persona.length > 0 && <span className="text-cyan-600">({filters.persona.length} selected)</span>}
+            </label>
+            <select 
+              multiple 
+              value={filters.persona} 
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions, option => option.value)
+                setFilters({...filters, persona: selected})
+              }}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+              size={4}
+            >
+              {personaOptions.filter(p => p !== 'All').map(p => (
+                <option key={p} value={p} className={filters.persona.includes(p) ? 'bg-cyan-600 text-white' : ''}>
+                  {p}
+                </option>
+              ))}
             </select>
+            <div className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              Hold Ctrl/Cmd to select multiple
+            </div>
           </div>
+          
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Concept {filters.concept.length > 0 && <span className="text-cyan-600">({filters.concept.length} selected)</span>}
@@ -659,15 +652,16 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
             {filteredCampaignCount !== totalCampaignCount && (
               <span> of <span className="font-semibold">{totalCampaignCount}</span></span>
             )} campaigns
+            {filters.persona.length > 0 && <span className="ml-2 text-cyan-600">• {filters.persona.length} persona(s) filtered</span>}
             {filters.concept.length > 0 && <span className="ml-2 text-cyan-600">• {filters.concept.length} concept(s) filtered</span>}
           </div>
           <div className="flex items-center gap-2">
             {ads.length >= 50000 && (
               <div className={`text-xs px-3 py-1 rounded-full ${isDark ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/50' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'}`}>
-                 Data limit reached - some campaigns may be missing
+                ⚠️ Data limit reached - some campaigns may be missing
               </div>
             )}
-            <button onClick={() => setFilters({ campaign: 'All', device: 'All', country: 'All', persona: 'All', concept: [], status: 'All', minSpend: 0, dateRange: 'last_7d' })}
+            <button onClick={() => setFilters({ campaign: 'All', device: 'All', country: 'All', persona: [], concept: [], status: 'All', minSpend: 0, dateRange: 'last_7d' })}
               className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
               Clear Filters
             </button>
@@ -701,7 +695,52 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         </div>
       </div>
 
-      {/* Rest of the component remains the same... */}
+      {/* Spend vs ROAS Bar Chart */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Spend vs ROAS by Concept
+        </h3>
+        <ResponsiveContainer width="100%" height={450}>
+          <BarChart data={conceptPerformance} margin={{ bottom: 80 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
+            <XAxis 
+              dataKey="concept" 
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              angle={-60}
+              textAnchor="end"
+              height={120}
+              interval={0}
+              tick={{ fontSize: 11 }}
+            />
+            <YAxis 
+              yAxisId="left"
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              label={{ value: 'Spend ($)', angle: -90, position: 'insideLeft' }}
+            />
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              stroke="#10B981"
+              label={{ value: 'ROAS', angle: 90, position: 'insideRight' }}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: isDark ? '#1F2937' : '#FFFFFF', 
+                border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
+                borderRadius: '8px'
+              }}
+              formatter={(value: any, name: string) => {
+                if (name === 'ROAS') return [safeNumber(value, 2) + 'x', name]
+                return ['$' + safeNumber(value, 0), name]
+              }}
+            />
+            <Legend />
+            <Bar yAxisId="left" dataKey="spend" fill="#06B6D4" name="Spend ($)" />
+            <Bar yAxisId="right" dataKey="roas" fill="#10B981" name="ROAS" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
       {/* Historical Spend vs Revenue Trend */}
       {historicalData.length > 0 && (
         <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
@@ -748,18 +787,27 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
             </LineChart>
           </ResponsiveContainer>
           <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Showing weekly spend and revenue - not cumulative
+            📊 Showing weekly spend and revenue - not cumulative
           </div>
         </div>
       )}
 
       {/* Top Performing Concepts Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Top 10 Concepts by Spend</h3>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={conceptPerformance} layout="horizontal">
+        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Top 10 Concepts - Spend vs Revenue</h3>
+        <ResponsiveContainer width="100%" height={450}>
+          <BarChart data={conceptPerformance} layout="horizontal" margin={{ bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
-            <XAxis type="category" dataKey="concept" stroke={isDark ? '#9CA3AF' : '#6B7280'} angle={-45} textAnchor="end" height={100} />
+            <XAxis 
+              type="category" 
+              dataKey="concept" 
+              stroke={isDark ? '#9CA3AF' : '#6B7280'} 
+              angle={-60} 
+              textAnchor="end" 
+              height={120}
+              interval={0}
+              tick={{ fontSize: 11 }}
+            />
             <YAxis type="number" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
             <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: '8px' }} />
             <Legend />
@@ -893,7 +941,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                           <tr className={`${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
                             <td className="px-4 py-2"></td>
                             <td className={`px-4 py-2 text-sm ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
-                              <span className="ml-6"> {conceptName}</span>
+                              <span className="ml-6">📊 {conceptName}</span>
                               <span className={`ml-2 text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
                                 {conceptAds.length} ads
                               </span>
