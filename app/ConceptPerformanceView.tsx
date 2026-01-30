@@ -44,7 +44,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     campaign: 'All',
     device: 'All',
     country: 'All',
-    persona: [] as string[], // ✅ CHANGED to multi-select array
+    persona: [] as string[], //  CHANGED to multi-select array
     concept: [] as string[],
     status: 'All',
     minSpend: 0,
@@ -70,8 +70,8 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         return
       }
 
-      console.log('📊 Total ads fetched:', adsData?.length)
-      console.log('📊 Sample raw ad data:', adsData?.[0])
+      console.log(' Total ads fetched:', adsData?.length)
+      console.log(' Sample raw ad data:', adsData?.[0])
       
       if (adsData?.length >= 50000) {
         console.warn('⚠️ WARNING: Hit query limit! Some campaigns may be missing.')
@@ -149,7 +149,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         }
       })
 
-      console.log('📊 Total ads enriched:', enrichedAds.length)
+      console.log(' Total ads enriched:', enrichedAds.length)
       setAds(enrichedAds)
     } catch (err) {
       console.error('Error:', err)
@@ -254,7 +254,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     if (filters.device !== 'All' && ad.primary_device !== filters.device) return false
     if (filters.country !== 'All' && ad.primary_country !== filters.country) return false
     
-    // ✅ UPDATED: Multi-select persona filter
+    //  UPDATED: Multi-select persona filter
     if (filters.persona.length > 0 && !filters.persona.includes(ad.persona)) return false
     
     if (filters.concept.length > 0 && !filters.concept.includes(ad.concept_code)) return false
@@ -459,7 +459,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         {/* Date Range Picker */}
         <div className="mb-4">
           <label className={`block text-xs font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            📅 Date Range
+             Date Range
           </label>
           
           <div className="relative">
@@ -546,7 +546,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           </div>
 
           <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            📊 Currently showing: <span className="font-semibold text-cyan-600">{getDateRangeLabel(filters.dateRange)}</span>
+             Currently showing: <span className="font-semibold text-cyan-600">{getDateRangeLabel(filters.dateRange)}</span>
           </div>
         </div>
 
@@ -573,7 +573,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
             </select>
           </div>
           
-          {/* ✅ UPDATED: Multi-select Persona filter */}
+          {/*  UPDATED: Multi-select Persona filter */}
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Persona {filters.persona.length > 0 && <span className="text-cyan-600">({filters.persona.length} selected)</span>}
@@ -658,7 +658,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           <div className="flex items-center gap-2">
             {ads.length >= 50000 && (
               <div className={`text-xs px-3 py-1 rounded-full ${isDark ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/50' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'}`}>
-                ⚠️ Data limit reached - some campaigns may be missing
+                 Data limit reached - some campaigns may be missing
               </div>
             )}
             <button onClick={() => setFilters({ campaign: 'All', device: 'All', country: 'All', persona: [], concept: [], status: 'All', minSpend: 0, dateRange: 'last_7d' })}
@@ -782,7 +782,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
             </LineChart>
           </ResponsiveContainer>
           <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            📊 Showing weekly spend and revenue - not cumulative
+             Showing weekly spend and revenue - not cumulative
           </div>
         </div>
       )}
@@ -936,7 +936,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                           <tr className={`${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
                             <td className="px-4 py-2"></td>
                             <td className={`px-4 py-2 text-sm ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
-                              <span className="ml-6">📊 {conceptName}</span>
+                              <span className="ml-6"> {conceptName}</span>
                               <span className={`ml-2 text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
                                 {conceptAds.length} ads
                               </span>
