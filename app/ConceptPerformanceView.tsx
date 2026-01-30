@@ -729,10 +729,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                 border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
                 borderRadius: '8px'
               }}
-              formatter={(value: any, name: string) => {
-                if (name === 'ROAS') return [safeNumber(value, 2) + 'x', name]
-                return ['$' + safeNumber(value, 0), name]
-              }}
             />
             <Legend />
             <Bar yAxisId="left" dataKey="spend" fill="#06B6D4" name="Spend ($)" />
@@ -765,7 +761,6 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                   border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, 
                   borderRadius: '8px' 
                 }}
-                formatter={(value: any) => `$${safeNumber(value, 0)}`}
               />
               <Legend />
               <Line 

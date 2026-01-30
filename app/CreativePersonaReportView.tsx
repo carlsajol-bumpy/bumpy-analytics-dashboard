@@ -430,10 +430,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
                 borderRadius: '8px'
               }}
-              formatter={(value: any, name: string) => {
-                if (name === 'ROAS') return [safeNumber(value, 2) + 'x', name]
-                return ['$' + safeNumber(value, 0), name]
-              }}
             />
             <Legend />
             <Bar yAxisId="left" dataKey="spend" fill="#06B6D4" name="Spend ($)" />
@@ -478,10 +474,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 backgroundColor: isDark ? '#1F2937' : '#FFFFFF', 
                 border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
                 borderRadius: '8px'
-              }}
-              formatter={(value: any, name: string) => {
-                if (name.includes('roas')) return [safeNumber(value, 2) + 'x', name]
-                return ['$' + safeNumber(value, 0), name]
               }}
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
