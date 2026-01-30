@@ -14,8 +14,6 @@ function safeNumber(value: any, decimals: number = 2): string {
   return num.toFixed(decimals)
 }
 
-<<<<<<< HEAD
-=======
 // Format week from "2025-11-08 - 2025-11-14" to "25-11-08 - 25-11-14"
 function formatWeekShort(weekString: string): string {
   if (!weekString) return 'Unknown'
@@ -32,7 +30,6 @@ function formatWeekShort(weekString: string): string {
   return weekString
 }
 
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
 interface CreativePersonaReportViewProps {
   isDark?: boolean
 }
@@ -51,8 +48,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     fetchData()
   }, [])
 
-<<<<<<< HEAD
-=======
   // Extract persona from AD NAME - position 3 (SAME as By Concept tab)
   // Pattern: US-[CODE]-[CONCEPT]-[PERSONA]-[DESCRIPTOR]-[TYPE]-[BATCH]
   // Example: US-X4nR8W-TalkingHead-Passportbro-helicopter-suit-VID-Batch...
@@ -69,7 +64,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     return parts[2] || 'Unknown'  // Position 2 = Concept
   }
 
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
   async function fetchData() {
     setLoading(true)
     
@@ -77,11 +71,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       const { data: reportData, error } = await supabase
         .from('creative_persona_report')
         .select('*')
-<<<<<<< HEAD
-        .order('Week', { ascending: true }) // ✅ FIXED: Use 'Week' with capital W
-=======
         .order('Week', { ascending: false })
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
 
       if (error) {
         console.error('Error fetching creative persona report:', error)
@@ -90,11 +80,18 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       }
 
       console.log('📊 Total rows fetched:', reportData?.length)
-<<<<<<< HEAD
-      console.log('📊 Sample row:', reportData?.[0]) // Debug: see actual column names
-=======
       console.log('📊 Sample row:', reportData?.[0])
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
+      
+      // Log first 10 ad names to see the pattern
+      console.log('📊 Sample ad names (first 10):')
+      reportData?.slice(0, 10).forEach((row: any, idx: number) => {
+        const adName = row['Ad name'] || ''
+        const parts = adName.split('-')
+        console.log(`  ${idx + 1}. Ad: ${adName}`)
+        console.log(`     Parts: [${parts.join('] [')}]`)
+        console.log(`     Concept (pos 2): ${parts[2] || 'N/A'}`)
+        console.log(`     Persona (pos 3): ${parts[3] || 'N/A'}`)
+      })
       
       if (!reportData || reportData.length === 0) {
         console.warn('No data found in creative_persona_report')
@@ -102,24 +99,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         return
       }
 
-<<<<<<< HEAD
-      // Enrich data with calculated fields
-      const enrichedData = reportData.map((row: any) => {
-        const amountSpent = parseFloat(row['Amount spent (USD)'] || 0)
-        const revenue = parseFloat(row['Purchases conversion value'] || 0)
-        const impressions = parseInt(row['Impressions'] || 0)
-        const ctr = parseFloat(row['CTR (link click-through rate)'] || 0)
-        
-        return {
-          ...row,
-          // Add computed fields for easier access
-          roas: row['Purchase ROAS (return on ad spend)'] || (amountSpent > 0 ? revenue / amountSpent : 0),
-          ctr_percent: ctr * 100,
-          cpm: row['CPM (cost per 1,000 impressions)'] || (impressions > 0 ? (amountSpent / impressions) * 1000 : 0)
-        }
-      })
-
-=======
       // Enrich data with extracted persona, concept, and computed fields
       const enrichedData = reportData.map((row: any) => {
         const campaignName = row['Campaign name'] || ''
@@ -160,7 +139,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       console.log('📊 Enriched with persona/concept:', enrichedData[0])
       console.log('📊 Sample persona:', enrichedData[0]?.persona)
       console.log('📊 Sample concept:', enrichedData[0]?.concept_code)
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       setData(enrichedData)
     } catch (err) {
       console.error('Error:', err)
@@ -171,26 +149,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   // Apply filters
   const filteredData = data.filter(row => {
-<<<<<<< HEAD
-    // Extract persona from campaign name
-    const campaignName = row['Campaign name'] || ''
-    const persona = campaignName.match(/(PassportBro|PassportGirl|Passport Bros|30-60|BLK|IndianBoy)/i)?.[0] || 'Unknown'
-    
-    if (filters.persona.length > 0 && !filters.persona.includes(persona)) {
-      return false
-    }
-    
-    if (filters.concept.length > 0) {
-      const adName = row['Ad name'] || ''
-      const concept = adName.split('-')[1] || ''
-      if (!filters.concept.includes(concept)) return false
-    }
-    
-    if (filters.campaign !== 'All' && row['Campaign name'] !== filters.campaign) return false
-    
-    const spent = parseFloat(row['Amount spent (USD)'] || 0)
-    if (spent < filters.minSpend) return false
-=======
     if (filters.persona.length > 0 && !filters.persona.includes(row.persona)) {
       return false
     }
@@ -206,41 +164,38 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     if (row.spend < filters.minSpend) {
       return false
     }
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
     
     return true
   })
 
+  // Debug logging when persona filter is active
+  if (filters.persona.length > 0) {
+    console.log('🔍 Persona Filter Active:', filters.persona)
+    console.log('📊 Total data rows:', data.length)
+    console.log('📊 Filtered data rows:', filteredData.length)
+    console.log('📊 Sample filtered personas:', filteredData.slice(0, 5).map(d => d.persona))
+    console.log('📊 All unique personas in data:', [...new Set(data.map(d => d.persona))].sort())
+    
+    // Check if the filtered persona exists in the data
+    filters.persona.forEach(p => {
+      const matchingRows = data.filter(d => d.persona === p)
+      console.log(`📊 Rows matching "${p}":`, matchingRows.length)
+      if (matchingRows.length > 0) {
+        console.log(`   Sample ad name:`, matchingRows[0].ad_name)
+        console.log(`   Extracted persona:`, matchingRows[0].persona)
+      }
+    })
+  }
+
   // Get unique values for filters
-<<<<<<< HEAD
-  const personaOptions = ['All', ...new Set(data.map(d => {
-    const campaignName = d['Campaign name'] || ''
-    const match = campaignName.match(/(PassportBro|PassportGirl|Passport Bros|30-60|BLK|IndianBoy)/i)
-    return match ? match[0] : 'Unknown'
-  }).filter(Boolean))].sort()
-
-  const conceptOptions = ['All', ...new Set(data.map(d => {
-    const adName = d['Ad name'] || ''
-    const parts = adName.split('-')
-    return parts && parts.length > 1 ? parts[1] : 'Unknown'
-  }).filter(Boolean))].sort()
-
-  const campaignOptions = ['All', ...new Set(data.map(d => d['Campaign name']).filter(Boolean))].sort()
-=======
   const personaOptions = ['All', ...new Set(data.map(d => d.persona).filter(Boolean))].sort()
   const conceptOptions = ['All', ...new Set(data.map(d => d.concept_code).filter(Boolean))].sort()
   const campaignOptions = ['All', ...new Set(data.map(d => d.campaign_name).filter(Boolean))].sort()
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
 
   // Aggregate by persona for bar chart
   const personaAggregated = Object.entries(
     filteredData.reduce((acc: any, row) => {
-<<<<<<< HEAD
-      const campaignName = row['Campaign name'] || ''
-      const persona = campaignName.match(/(PassportBro|PassportGirl|Passport Bros|30-60|BLK|IndianBoy)/i)?.[0] || 'Unknown'
-=======
       const persona = row.persona || 'Unknown'
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       
       if (!acc[persona]) {
         acc[persona] = {
@@ -252,17 +207,10 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         }
       }
       
-<<<<<<< HEAD
-      acc[persona].spend += parseFloat(row['Amount spent (USD)'] || 0)
-      acc[persona].revenue += parseFloat(row['Purchases conversion value'] || 0)
-      acc[persona].purchases += parseInt(row['Purchases'] || 0)
-      acc[persona].impressions += parseInt(row['Impressions'] || 0)
-=======
       acc[persona].spend += row.spend || 0
       acc[persona].revenue += row.revenue || 0
       acc[persona].purchases += row.purchases || 0
       acc[persona].impressions += row.impressions || 0
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       
       return acc
     }, {})
@@ -274,14 +222,8 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
   // Weekly trend by persona
   const weeklyTrend = Object.entries(
     filteredData.reduce((acc: any, row) => {
-<<<<<<< HEAD
-      const week = row['Week'] || 'Unknown'
-      const campaignName = row['Campaign name'] || ''
-      const persona = campaignName.match(/(PassportBro|PassportGirl|Passport Bros|30-60|BLK|IndianBoy)/i)?.[0] || 'Unknown'
-=======
       const week = row.week || 'Unknown'
       const persona = row.persona || 'Unknown'
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       
       if (!acc[week]) {
         acc[week] = {
@@ -299,15 +241,9 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         acc[week][`${persona}_revenue`] = 0
       }
       
-<<<<<<< HEAD
-      acc[week][spendKey] += parseFloat(row['Amount spent (USD)'] || 0)
-      acc[week][`${persona}_revenue`] += parseFloat(row['Purchases conversion value'] || 0)
-      acc[week].total_revenue += parseFloat(row['Purchases conversion value'] || 0)
-=======
       acc[week][spendKey] += row.spend || 0
       acc[week][`${persona}_revenue`] += row.revenue || 0
       acc[week].total_revenue += row.revenue || 0
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       
       return acc
     }, {})
@@ -328,32 +264,15 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   // Calculate totals
   const totals = filteredData.reduce((acc, row) => {
-<<<<<<< HEAD
-    acc.spend += parseFloat(row['Amount spent (USD)'] || 0)
-    acc.revenue += parseFloat(row['Purchases conversion value'] || 0)
-    acc.purchases += parseInt(row['Purchases'] || 0)
-    acc.impressions += parseInt(row['Impressions'] || 0)
-=======
     acc.spend += row.spend || 0
     acc.revenue += row.revenue || 0
     acc.purchases += row.purchases || 0
     acc.impressions += row.impressions || 0
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
     return acc
   }, { spend: 0, revenue: 0, purchases: 0, impressions: 0 })
 
   const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
 
-<<<<<<< HEAD
-  // Define colors for personas
-  const personaColors: Record<string, string> = {
-    'PassportBro': '#3B82F6',
-    'Passport Bros': '#3B82F6',
-    'PassportGirl': '#EF4444',
-    '30-60': '#10B981',
-    'BLK': '#8B5CF6',
-    'IndianBoy': '#F59E0B',
-=======
   // Define colors for personas (dynamic based on actual personas found)
   const personaColors: Record<string, string> = {
     'Passportbro': '#3B82F6',
@@ -366,7 +285,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     'BLK': '#8B5CF6',
     '6figures': '#10B981',
     'AsianMaleSouthEastAsianFemale': '#F59E0B',
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
     'Unknown': '#6B7280'
   }
 
@@ -475,11 +393,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
         <div className="flex items-center justify-between">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-<<<<<<< HEAD
-            Showing <span className="font-semibold text-cyan-600">{filteredData.length}</span> ads
-=======
             Showing <span className="font-semibold text-cyan-600">{filteredData.length.toLocaleString()}</span> ads
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             {filters.persona.length > 0 && <span className="ml-2 text-cyan-600">• {filters.persona.length} persona(s) filtered</span>}
             {filters.concept.length > 0 && <span className="ml-2 text-cyan-600">• {filters.concept.length} concept(s) filtered</span>}
           </div>
@@ -512,33 +426,57 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         </div>
       </div>
 
+      {/* No Data Warning */}
+      {filters.persona.length > 0 && filteredData.length === 0 && (
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-yellow-900/20 border-yellow-700' : 'bg-yellow-50 border-yellow-200'}`}>
+          <div className="flex items-start gap-3">
+            <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-yellow-400' : 'text-yellow-800'}`}>
+                ⚠️ No Data Found
+              </h3>
+              <p className={`text-sm mb-3 ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                No data found for persona: <span className="font-semibold">{filters.persona.join(', ')}</span>
+              </p>
+              <div className={`text-xs ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                <p className="mb-2">This could mean:</p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>The persona value in the filter doesn't match the data exactly</li>
+                  <li>No ads have this persona assigned</li>
+                  <li>The ad name format for this persona is different</li>
+                </ul>
+                <p className="mt-3">
+                  💡 <strong>Tip:</strong> Open the browser console (F12) to see debug logs showing:
+                </p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>All unique persona values in the data</li>
+                  <li>Sample ad names</li>
+                  <li>Extraction details</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Spend vs ROAS Bar Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           Spend vs ROAS by Persona
         </h3>
-<<<<<<< HEAD
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={personaAggregated}>
-=======
         <ResponsiveContainer width="100%" height={450}>
           <BarChart data={personaAggregated} margin={{ bottom: 80 }}>
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
             <XAxis 
               dataKey="persona" 
               stroke={isDark ? '#9CA3AF' : '#6B7280'}
-<<<<<<< HEAD
-              angle={-45}
-              textAnchor="end"
-              height={80}
-=======
               angle={-60}
               textAnchor="end"
               height={120}
               interval={0}
               tick={{ fontSize: 11 }}
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             />
             <YAxis 
               yAxisId="left"
@@ -557,13 +495,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
                 borderRadius: '8px'
               }}
-<<<<<<< HEAD
-              formatter={(value: any, name: string) => {
-                if (name === 'ROAS') return [safeNumber(value, 2) + 'x', name]
-                return ['$' + safeNumber(value, 0), name]
-              }}
-=======
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             />
             <Legend />
             <Bar yAxisId="left" dataKey="spend" fill="#06B6D4" name="Spend ($)" />
@@ -578,11 +509,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
           Persona Performance Over Time
         </h3>
         <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-<<<<<<< HEAD
-          Weekly spend by persona with ROAS values
-=======
           Weekly spend by top personas (showing top 5 by total spend)
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
         </p>
         <ResponsiveContainer width="100%" height={400}>
           <LineChart data={weeklyTrend}>
@@ -590,18 +517,11 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             <XAxis 
               dataKey="week" 
               stroke={isDark ? '#9CA3AF' : '#6B7280'}
-<<<<<<< HEAD
-              angle={-45}
-              textAnchor="end"
-              height={100}
-              tick={{ fontSize: 11 }}
-=======
               angle={0}
               textAnchor="middle"
               height={60}
               tick={{ fontSize: 10 }}
               interval={0}
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             />
             <YAxis 
               yAxisId="left"
@@ -620,27 +540,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
                 borderRadius: '8px'
               }}
-<<<<<<< HEAD
-              formatter={(value: any, name: string) => {
-                if (name.includes('roas')) return [safeNumber(value, 2) + 'x', name]
-                return ['$' + safeNumber(value, 0), name]
-              }}
-            />
-            <Legend />
-            
-            {personaOptions.slice(1).map((persona, index) => (
-              <Line
-                key={`${persona}_spend`}
-                yAxisId="left"
-                type="monotone"
-                dataKey={`${persona}_spend`}
-                stroke={personaColors[persona] || '#6B7280'}
-                strokeWidth={2}
-                dot={{ r: 4 }}
-                name={`${persona} Spend`}
-              />
-            ))}
-=======
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
             
@@ -660,34 +559,22 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 />
               )
             })}
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             
             <Line
               yAxisId="right"
               type="monotone"
               dataKey="total_revenue"
               stroke="#F97316"
-<<<<<<< HEAD
-              strokeWidth={3}
-              dot={{ fill: '#F97316', r: 5 }}
-              name="US Revenue"
-=======
               strokeWidth={4}
               dot={{ fill: '#F97316', r: 6 }}
               name="Total Revenue"
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             />
           </LineChart>
         </ResponsiveContainer>
         
-<<<<<<< HEAD
-        <div className="mt-4 grid grid-cols-5 gap-2">
-          {personaOptions.slice(1).map(persona => {
-=======
         <div className={`mt-4 grid grid-cols-auto-fit gap-2`} style={{gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'}}>
           {personaAggregated.slice(0, 5).map(personaData => {
             const persona = personaData.persona
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
             const avgRoas = weeklyTrend.reduce((sum, week) => sum + (week[`${persona}_roas`] || 0), 0) / (weeklyTrend.length || 1)
             return (
               <div key={persona} className={`p-2 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
@@ -695,59 +582,25 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                 <div className={`text-sm font-semibold ${avgRoas >= 1 ? 'text-green-600' : 'text-red-600'}`}>
                   Avg ROAS: {safeNumber(avgRoas, 2)}x
                 </div>
-<<<<<<< HEAD
-=======
                 <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
                   Spend: ${safeNumber(personaData.spend / 1000, 1)}K
                 </div>
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
               </div>
             )
           })}
         </div>
-<<<<<<< HEAD
-=======
         
         {personaOptions.length > 6 && (
           <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             💡 Showing top 5 personas by spend. Use filters above to see specific personas.
           </div>
         )}
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       </div>
 
       {/* Detailed Table */}
       <div className={`rounded-xl overflow-hidden shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="p-6">
           <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
-<<<<<<< HEAD
-        </div>
-        <div className="overflow-x-auto max-h-96">
-          <table className="w-full">
-            <thead className={`sticky top-0 ${isDark ? 'bg-gray-750' : 'bg-gray-50'}`}>
-              <tr>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Week</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Campaign</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Ad Name</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Purchases</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {filteredData.slice(0, 100).map((row, idx) => (
-                <tr key={idx} className={`${isDark ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}>
-                  <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row['Week']}</td>
-                  <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row['Campaign name']}</td>
-                  <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row['Ad name']}</td>
-                  <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(row['Amount spent (USD)'], 0)}</td>
-                  <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(row['Purchases conversion value'], 0)}</td>
-                  <td className={`px-4 py-2 text-sm text-right ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {safeNumber(row.roas, 2)}x
-                  </td>
-                  <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row['Purchases'] || 0}</td>
-=======
           <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             Showing all {filteredData.length.toLocaleString()} rows
           </p>
@@ -805,20 +658,11 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                   <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(row.cpm, 2)}</td>
                   <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber((row.link_clicks || 0) > 0 ? row.spend / row.link_clicks : 0, 2)}</td>
                   <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(row.frequency, 2)}</td>
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-<<<<<<< HEAD
-        {filteredData.length > 100 && (
-          <div className={`p-4 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing first 100 rows of {filteredData.length} total
-          </div>
-        )}
-=======
->>>>>>> b5588136721085107c02cfe50dce2e7896f0c8a7
       </div>
     </div>
   )
