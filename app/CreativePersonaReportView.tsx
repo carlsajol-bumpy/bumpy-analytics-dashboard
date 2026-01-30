@@ -264,10 +264,44 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   // Debug weekly trend when persona filter is active
   if (filters.persona.length > 0) {
-    console.log('📊 Weekly Trend Data:', weeklyTrend)
-    console.log('📊 Sample week data:', weeklyTrend[0])
-    console.log('📊 Persona Aggregated (for chart):', personaAggregated)
-    console.log('📊 Top 5 personas to show:', personaAggregated.slice(0, 5).map(p => p.persona))
+    console.log('📊 === DEBUGGING 3040 PERSONA ===')
+    console.log('📊 Filtered Data Length:', filteredData.length)
+    console.log('📊 Sample Filtered Rows:', filteredData.slice(0, 3).map(d => ({
+      persona: d.persona,
+      spend: d.spend,
+      week: d.week,
+      ad_name: d.ad_name
+    })))
+    console.log('📊 Weekly Trend Length:', weeklyTrend.length)
+    console.log('📊 Weekly Trend Data (first 3 weeks):', weeklyTrend.slice(0, 3))
+    console.log('📊 Persona Aggregated:', personaAggregated)
+    console.log('📊 Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
+      persona: p.persona,
+      spend: p.spend,
+      dataKey: `${p.persona}_spend`
+    })))
+    
+    // Check if the dataKey exists in weeklyTrend
+    if (weeklyTrend.length > 0 && personaAggregated.length > 0) {
+      const firstPersona = personaAggregated[0].persona
+      const dataKey = `${firstPersona}_spend`
+      console.log('📊 Checking if dataKey exists in weeklyTrend:')
+      console.log(`   DataKey: "${dataKey}"`)
+      console.log(`   First week has this key:`, weeklyTrend[0].hasOwnProperty(dataKey))
+      console.log(`   First week value:`, weeklyTrend[0][dataKey])
+      console.log(`   All keys in first week:`, Object.keys(weeklyTrend[0]))
+      
+      // Check scale issue
+      const maxSpend = Math.max(...weeklyTrend.map(w => w[dataKey] || 0))
+      const maxRevenue = Math.max(...weeklyTrend.map(w => w.total_revenue || 0))
+      console.log('📊 SCALE ANALYSIS:')
+      console.log(`   Max weekly spend: $${maxSpend}`)
+      console.log(`   Max weekly revenue: $${maxRevenue}`)
+      console.log(`   Ratio: ${maxRevenue > 0 ? (maxSpend / maxRevenue * 100).toFixed(2) : 0}% (spend vs revenue)`)
+      if (maxSpend < maxRevenue * 0.1) {
+        console.warn('⚠️ WARNING: Spend values are <10% of revenue! Line may be barely visible at bottom of chart!')
+      }
+    }
   }
 
   // Calculate totals
@@ -554,13 +588,29 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             {/* Show only top 5 personas by spend */}
             {personaAggregated.slice(0, 5).map((personaData, index) => {
               const persona = personaData.persona
+              const dataKey = `${persona}_spend`
+              const color = personaColors[persona] || ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'][index]
+              
+              // Debug log for each line being created
+              if (filters.persona.length > 0) {
+                console.log(`📊 Creating Line for persona "${persona}":`, {
+                  dataKey,
+                  color,
+                  totalSpend: personaData.spend,
+                  sampleWeekValues: weeklyTrend.slice(0, 2).map(w => ({
+                    week: w.week,
+                    value: w[dataKey]
+                  }))
+                })
+              }
+              
               return (
                 <Line
                   key={`${persona}_spend`}
                   yAxisId="left"
                   type="monotone"
-                  dataKey={`${persona}_spend`}
-                  stroke={personaColors[persona] || ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'][index]}
+                  dataKey={dataKey}
+                  stroke={color}
                   strokeWidth={3}
                   dot={{ r: 5 }}
                   name={`${persona} Spend`}
