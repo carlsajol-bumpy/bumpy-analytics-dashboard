@@ -293,6 +293,9 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     }, {})
   )
   
+  // Get unique personas from filtered data (not all data!)
+  const filteredPersonas = [...new Set(filteredData.map(d => d.persona).filter(Boolean))]
+  
   const weeklyTrend = weeklyTrendRaw.map(([week, data]: [string, any], index: number) => {
     const result: any = { week, total_revenue: data.total_revenue }
     
@@ -300,20 +303,24 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     if (filters.persona.includes('3040') && index === 0) {
       console.log(`📊 [Map] First week "${week}" data keys:`, Object.keys(data))
       console.log(`📊 [Map] Has 3040_spend:`, '3040_spend' in data)
-      console.log(`📊 [Map] 3040_spend value:`, data['3040_spend'])
+      console.log(`📊 [Map] 3040_spend value from reduce:`, data['3040_spend'])
+      console.log(`📊 [Map] Filtered personas to iterate:`, filteredPersonas)
     }
     
-    personaOptions.slice(1).forEach(persona => {
+    // IMPORTANT: Only iterate through personas in FILTERED data, not ALL personas!
+    filteredPersonas.forEach(persona => {
       const spendKey = `${persona}_spend`
       const revenueKey = `${persona}_revenue`
       const roasKey = `${persona}_roas`
       
+      // Use values from reduce accumulator
       result[spendKey] = data[spendKey] || 0
       result[roasKey] = data[spendKey] > 0 ? (data[revenueKey] || 0) / data[spendKey] : 0
       
       // Debug: log when we're adding 3040 keys (first week only)
       if (filters.persona.includes('3040') && persona === '3040' && index === 0) {
         console.log(`📊 [Map] Adding key "${spendKey}" with value:`, result[spendKey])
+        console.log(`📊 [Map] Source value from data[${spendKey}]:`, data[spendKey])
       }
     })
     
@@ -656,18 +663,22 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
             
-            {/* Show only top 5 personas by spend */}
-            {personaAggregated.slice(0, 5).map((personaData, index) => {
-              const persona = personaData.persona
+            {/* Show personas from filtered data */}
+            {filteredPersonas.slice(0, 5).map((persona, index) => {
               const dataKey = `${persona}_spend`
               const color = personaColors[persona] || ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'][index]
+              
+              // Get total spend for this persona
+              const personaTotal = filteredData
+                .filter(d => d.persona === persona)
+                .reduce((sum, d) => sum + (d.spend || 0), 0)
               
               // Debug log for each line being created
               if (filters.persona.length > 0) {
                 console.log(`📊 Creating Line for persona "${persona}":`, {
                   dataKey,
                   color,
-                  totalSpend: personaData.spend,
+                  totalSpend: personaTotal,
                   sampleWeekValues: weeklyTrend.slice(0, 2).map(w => ({
                     week: w.week,
                     value: w[dataKey]
@@ -677,7 +688,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
               
               return (
                 <Line
-                  key={`${persona}_spend`}
+                  key={dataKey}
                   yAxisId="left"
                   type="monotone"
                   dataKey={dataKey}
@@ -702,9 +713,13 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         </ResponsiveContainer>
         
         <div className={`mt-4 grid grid-cols-auto-fit gap-2`} style={{gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'}}>
-          {personaAggregated.slice(0, 5).map(personaData => {
-            const persona = personaData.persona
-            const avgRoas = weeklyTrend.reduce((sum, week) => sum + (week[`${persona}_roas`] || 0), 0) / (weeklyTrend.length || 1)
+          {filteredPersonas.slice(0, 5).map(persona => {
+            // Calculate metrics for this persona from filtered data
+            const personaRows = filteredData.filter(d => d.persona === persona)
+            const personaSpend = personaRows.reduce((sum, d) => sum + (d.spend || 0), 0)
+            const personaRevenue = personaRows.reduce((sum, d) => sum + (d.revenue || 0), 0)
+            const avgRoas = personaSpend > 0 ? personaRevenue / personaSpend : 0
+            
             return (
               <div key={persona} className={`p-2 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
                 <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{persona}</div>
@@ -712,14 +727,14 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                   Avg ROAS: {safeNumber(avgRoas, 2)}x
                 </div>
                 <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
-                  Spend: ${safeNumber(personaData.spend / 1000, 1)}K
+                  Spend: ${safeNumber(personaSpend / 1000, 1)}K
                 </div>
               </div>
             )
           })}
         </div>
         
-        {personaOptions.length > 6 && (
+        {filteredPersonas.length > 5 && (
           <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             Showing top 5 personas by spend. Use filters above to see specific personas.
           </div>

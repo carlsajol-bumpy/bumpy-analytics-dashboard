@@ -1,9 +1,8 @@
 'use client'
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-// Helper function to safely format numbers
 function safeNumber(value: any, decimals: number = 2): string {
   if (value === undefined || value === null || value === '') {
     return (0).toFixed(decimals)
@@ -15,142 +14,158 @@ function safeNumber(value: any, decimals: number = 2): string {
   return num.toFixed(decimals)
 }
 
-interface ConceptPerformanceViewProps {
+// Format week from "2025-11-08 - 2025-11-14" to "25-11-08 - 25-11-14"
+function formatWeekShort(weekString: string): string {
+  if (!weekString) return 'Unknown'
+  
+  // Match pattern: YYYY-MM-DD - YYYY-MM-DD
+  const match = weekString.match(/(\d{4})-(\d{2})-(\d{2})\s*-\s*(\d{4})-(\d{2})-(\d{2})/)
+  if (match) {
+    const [_, year1, month1, day1, year2, month2, day2] = match
+    const shortYear1 = year1.slice(2) // "2025" -> "25"
+    const shortYear2 = year2.slice(2)
+    return `${shortYear1}-${month1}-${day1} - ${shortYear2}-${month2}-${day2}`
+  }
+  
+  return weekString
+}
+
+interface CreativePersonaReportViewProps {
   isDark?: boolean
 }
 
-type DateRangeOption = 
-  | 'today' 
-  | 'yesterday' 
-  | 'last_7d' 
-  | 'last_14d' 
-  | 'last_28d'
-  | 'last_30d'
-  | 'this_week'
-  | 'last_week'
-  | 'this_month'
-  | 'last_month'
-
-export default function ConceptPerformanceView({ isDark }: ConceptPerformanceViewProps) {
-  const [ads, setAds] = useState<any[]>([])
+export default function CreativePersonaReportView({ isDark }: CreativePersonaReportViewProps) {
+  const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [sortField, setSortField] = useState('spend_7d')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
-  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
-  const [showDatePicker, setShowDatePicker] = useState(false)
-  
-  // Filters with multi-select support for BOTH concept and persona
   const [filters, setFilters] = useState({
-    campaign: 'All',
-    device: 'All',
-    country: 'All',
-    persona: [] as string[], //  CHANGED to multi-select array
+    persona: [] as string[],
     concept: [] as string[],
-    status: 'All',
-    minSpend: 0,
-    dateRange: 'last_7d' as DateRangeOption
+    campaign: 'All',
+    minSpend: 0
   })
 
   useEffect(() => {
-    fetchAds()
+    fetchData()
   }, [])
 
-  async function fetchAds() {
+  // Extract persona from AD NAME - position 3 (SAME as By Concept tab)
+  // Pattern: US-[CODE]-[CONCEPT]-[PERSONA]-[DESCRIPTOR]-[TYPE]-[BATCH]
+  // Example: US-X4nR8W-TalkingHead-Passportbro-helicopter-suit-VID-Batch...
+  const extractPersona = (adName: string): string => {
+    if (!adName) return 'Unknown'
+    const parts = adName.split('-')
+    return parts[3] || 'Unknown'  // Position 3 = Persona
+  }
+
+  // Extract concept from AD NAME - position 2 (SAME as By Concept tab)
+  const extractConceptCode = (adName: string): string => {
+    if (!adName) return 'Unknown'
+    const parts = adName.split('-')
+    return parts[2] || 'Unknown'  // Position 2 = Concept
+  }
+
+  async function fetchData() {
     setLoading(true)
     
     try {
-      const { data: adsData, error: adsError } = await supabase
-        .from('creative_performance')
+      const { data: reportData, error } = await supabase
+        .from('creative_persona_report')
         .select('*')
-        .limit(50000)
+        .order('Week', { ascending: false })
 
-      if (adsError) {
-        console.error('Error fetching ads:', adsError)
+      if (error) {
+        console.error('Error fetching creative persona report:', error)
         setLoading(false)
         return
       }
 
-      console.log(' Total ads fetched:', adsData?.length)
-      console.log(' Sample raw ad data:', adsData?.[0])
+      console.log('📊 Total rows fetched:', reportData?.length)
+      console.log('📊 Sample row:', reportData?.[0])
+      console.log('📊 Available columns:', Object.keys(reportData?.[0] || {}))
+      console.log('📊 Checking for pre-existing columns:')
+      console.log('   - Persona column exists:', 'Persona' in (reportData?.[0] || {}))
+      console.log('   - Concept column exists:', 'Concept' in (reportData?.[0] || {}))
+      console.log('   - Week column exists:', 'Week' in (reportData?.[0] || {}))
+      console.log('📊 Sample values:')
+      console.log('   - Persona:', reportData?.[0]?.['Persona'])
+      console.log('   - Concept:', reportData?.[0]?.['Concept'])
+      console.log('   - Week:', reportData?.[0]?.['Week'])
       
-      if (adsData?.length >= 50000) {
-        console.warn('⚠️ WARNING: Hit query limit! Some campaigns may be missing.')
-      }
-
-      if (!adsData || adsData.length === 0) {
-        console.warn('No ads found')
+      // Log first 5 ad names to see the pattern
+      console.log('📊 Sample ad names (first 5):')
+      reportData?.slice(0, 5).forEach((row: any, idx: number) => {
+        const adName = row['Ad name'] || ''
+        const parts = adName.split('-')
+        console.log(`  ${idx + 1}. Ad: ${adName}`)
+        console.log(`     Persona from column: ${row['Persona']}`)
+        console.log(`     Concept from column: ${row['Concept']}`)
+        console.log(`     Week from column: ${row['Week']}`)
+        console.log(`     Parts: [${parts.join('] [')}]`)
+        console.log(`     Extracted persona (pos 3): ${parts[3] || 'N/A'}`)
+        console.log(`     Extracted concept (pos 2): ${parts[2] || 'N/A'}`)
+      })
+      
+      if (!reportData || reportData.length === 0) {
+        console.warn('No data found in creative_persona_report')
         setLoading(false)
         return
       }
 
-      const enrichedAds = adsData.map((ad: any) => {
-        const spend_7d = parseFloat(ad.spend_7d || ad.spend || 0)
-        const roas_7d = parseFloat(ad.roas_7d || 0)
-        const revenue_7d = roas_7d * spend_7d
-        const impressions_7d = parseInt(ad.impressions_7d || ad.impressions || 0)
-        const clicks_7d = parseInt(ad.clicks_7d || ad.clicks || ad.link_clicks || 0)
-        const conversions_7d = parseInt(ad.conversions_7d || ad.purchases || ad.conversions || 0)
+      // Enrich data with extracted persona, concept, and computed fields
+      const enrichedData = reportData.map((row: any) => {
+        const campaignName = row['Campaign name'] || ''
+        const adName = row['Ad name'] || ''
+        const amountSpent = parseFloat(row['Amount spent (USD)'] || 0)
+        const revenue = parseFloat(row['Purchases conversion value'] || 0)
+        const purchases = parseInt(row['Purchases'] || 0)
+        const impressions = parseInt(row['Impressions'] || 0)
+        const linkClicks = parseInt(row['Link clicks'] || 0)
         
-        const spend_prev = parseFloat(ad.spend_prev || 0)
-        const roas_prev = parseFloat(ad.roas_prev || 0)
-        const revenue_prev = roas_prev * spend_prev
-        const impressions_prev = parseInt(ad.impressions_prev || 0)
-        const clicks_prev = parseInt(ad.clicks_prev || 0)
-        const conversions_prev = parseInt(ad.conversions_prev || 0)
-        
-        const spend_28d = parseFloat(ad.spend_28d || 0)
-        const roas_28d = parseFloat(ad.roas_28d || 0)
-        const revenue_28d = roas_28d * spend_28d
-        const impressions_28d = parseInt(ad.impressions_28d || 0)
-        const clicks_28d = parseInt(ad.clicks_28d || 0)
-        const conversions_28d = parseInt(ad.conversions_28d || 0)
-        
-        const spend_30d = parseFloat(ad.spend_30d || 0)
-        const roas_30d = parseFloat(ad.roas_30d || 0)
-        const revenue_30d = roas_30d * spend_30d
-        const impressions_30d = parseInt(ad.impressions_30d || 0)
-        const clicks_30d = parseInt(ad.clicks_30d || 0)
-        const conversions_30d = parseInt(ad.conversions_30d || 0)
+        // Try multiple column name variations (capitalized, lowercase, uppercase)
+        const weekValue = row['Week'] || row['week'] || row['WEEK'] || ''
+        const personaValue = row['Persona'] || row['persona'] || row['PERSONA'] || extractPersona(adName) || 'Unknown'
+        const conceptValue = row['Concept'] || row['concept'] || row['CONCEPT'] || extractConceptCode(adName) || 'Unknown'
         
         return {
-          ...ad,
-          spend_7d,
-          revenue_7d,
-          roas_7d,
-          conversions_7d,
-          impressions_7d,
-          clicks_7d,
-          spend_prev,
-          revenue_prev,
-          roas_prev,
-          conversions_prev,
-          impressions_prev,
-          clicks_prev,
-          spend_28d,
-          revenue_28d,
-          roas_28d,
-          conversions_28d,
-          impressions_28d,
-          clicks_28d,
-          spend_30d,
-          revenue_30d,
-          roas_30d,
-          conversions_30d,
-          impressions_30d,
-          clicks_30d,
-          cpm_7d: impressions_7d > 0 ? (spend_7d / impressions_7d) * 1000 : 0,
-          ctr_7d: impressions_7d > 0 ? (clicks_7d / impressions_7d) : 0,
-          ipm_7d: impressions_7d / 1000,
-          cpi_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-          pp10k_7d: impressions_7d > 0 ? (conversions_7d / impressions_7d) * 10000 : 0,
-          avg_purchase_value_7d: conversions_7d > 0 ? revenue_7d / conversions_7d : 0,
-          cpp_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-          spend_change: spend_prev > 0 ? ((spend_7d - spend_prev) / spend_prev) * 100 : 0,
+          ...row,
+          // Use existing columns from Supabase data (try all case variations)
+          week: weekValue,
+          week_raw: weekValue,
+          persona: personaValue,
+          concept_code: conceptValue,
+          // Normalize column names for easier access
+          campaign_name: campaignName,
+          ad_name: adName,
+          spend: amountSpent,
+          revenue: revenue,
+          roas: row['Purchase ROAS (return on ad spend)'] || (amountSpent > 0 ? revenue / amountSpent : 0),
+          purchases: purchases,
+          impressions: impressions,
+          link_clicks: linkClicks,
+          cpm: row['CPM (cost per 1,000 impressions)'] || (impressions > 0 ? (amountSpent / impressions) * 1000 : 0),
+          ctr: row['CTR (link click-through rate)'] || (impressions > 0 ? linkClicks / impressions : 0),
+          frequency: row['Frequency'] || 0,
+          cost_per_purchase: row['Cost per purchase'] || (purchases > 0 ? amountSpent / purchases : 0)
         }
       })
 
-      console.log(' Total ads enriched:', enrichedAds.length)
-      setAds(enrichedAds)
+      console.log('📊 Enriched with persona/concept:', enrichedData[0])
+      console.log('📊 Sample persona:', enrichedData[0]?.persona)
+      console.log('📊 Sample concept:', enrichedData[0]?.concept_code)
+      console.log('📊 Sample week:', enrichedData[0]?.week)
+      
+      // Find and log any 3040 rows to verify they exist
+      const sample3040 = enrichedData.filter(d => d.persona === '3040').slice(0, 3)
+      console.log('📊 Sample 3040 rows found:', sample3040.length)
+      if (sample3040.length > 0) {
+        console.log('📊 First 3040 row:', {
+          persona: sample3040[0].persona,
+          spend: sample3040[0].spend,
+          week: sample3040[0].week,
+          ad_name: sample3040[0].ad_name?.substring(0, 50)
+        })
+      }
+      setData(enrichedData)
     } catch (err) {
       console.error('Error:', err)
     }
@@ -158,288 +173,247 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
     setLoading(false)
   }
 
-  function handleSort(field: string) {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('desc')
+  // Apply filters
+  const filteredData = data.filter(row => {
+    if (filters.persona.length > 0 && !filters.persona.includes(row.persona)) {
+      return false
     }
-  }
-
-  const getDateRangeLabel = (range: DateRangeOption): string => {
-    const labels: Record<DateRangeOption, string> = {
-      'today': 'Today',
-      'yesterday': 'Yesterday',
-      'last_7d': 'Last 7 days',
-      'last_14d': 'Last 14 days',
-      'last_28d': 'Last 28 days',
-      'last_30d': 'Last 30 days',
-      'this_week': 'This week',
-      'last_week': 'Last week',
-      'this_month': 'This month',
-      'last_month': 'Last month'
+    
+    if (filters.concept.length > 0 && !filters.concept.includes(row.concept_code)) {
+      return false
     }
-    return labels[range]
-  }
-
-  const getFilteredDataByDateRange = (ad: any) => {
-    switch (filters.dateRange) {
-      case 'today':
-      case 'yesterday':
-      case 'last_7d':
-      case 'this_week':
-        return {
-          spend: ad.spend_7d || 0,
-          revenue: ad.revenue_7d || 0,
-          impressions: ad.impressions_7d || 0,
-          clicks: ad.clicks_7d || 0,
-          conversions: ad.conversions_7d || 0,
-          roas: ad.roas_7d || 0,
-          reach: ad.reach_7d || 0,
-          link_clicks: ad.link_clicks_7d || 0
-        }
-      case 'last_week':
-      case 'last_14d':
-        return {
-          spend: ad.spend_prev || 0,
-          revenue: ad.revenue_prev || 0,
-          impressions: ad.impressions_prev || 0,
-          clicks: ad.clicks_prev || 0,
-          conversions: ad.conversions_prev || 0,
-          roas: ad.roas_prev || 0,
-          reach: ad.reach_prev || 0,
-          link_clicks: ad.link_clicks_prev || 0
-        }
-      case 'last_28d':
-      case 'this_month':
-        return {
-          spend: ad.spend_28d || 0,
-          revenue: ad.revenue_28d || 0,
-          impressions: ad.impressions_28d || 0,
-          clicks: ad.clicks_28d || 0,
-          conversions: ad.conversions_28d || 0,
-          roas: ad.roas_28d || 0,
-          reach: ad.reach_28d || 0,
-          link_clicks: ad.link_clicks_28d || 0
-        }
-      case 'last_30d':
-      case 'last_month':
-        return {
-          spend: ad.spend_30d || 0,
-          revenue: ad.revenue_30d || 0,
-          impressions: ad.impressions_30d || 0,
-          clicks: ad.clicks_30d || 0,
-          conversions: ad.conversions_30d || 0,
-          roas: ad.roas_30d || 0,
-          reach: ad.reach_30d || 0,
-          link_clicks: ad.link_clicks_30d || 0
-        }
-      default:
-        return {
-          spend: ad.spend_7d || 0,
-          revenue: ad.revenue_7d || 0,
-          impressions: ad.impressions_7d || 0,
-          clicks: ad.clicks_7d || 0,
-          conversions: ad.conversions_7d || 0,
-          roas: ad.roas_7d || 0,
-          reach: ad.reach_7d || 0,
-          link_clicks: ad.link_clicks_7d || 0
-        }
+    
+    if (filters.campaign !== 'All' && row.campaign_name !== filters.campaign) {
+      return false
     }
-  }
-
-  const filteredAds = ads.filter(ad => {
-    if (filters.campaign !== 'All' && ad.batch !== filters.campaign) return false
-    if (filters.device !== 'All' && ad.primary_device !== filters.device) return false
-    if (filters.country !== 'All' && ad.primary_country !== filters.country) return false
     
-    //  UPDATED: Multi-select persona filter
-    if (filters.persona.length > 0 && !filters.persona.includes(ad.persona)) return false
-    
-    if (filters.concept.length > 0 && !filters.concept.includes(ad.concept_code)) return false
-    if (filters.status !== 'All' && ad.status !== filters.status) return false
-    
-    const dateRangeData = getFilteredDataByDateRange(ad)
-    if (dateRangeData.spend < filters.minSpend) return false
+    if (row.spend < filters.minSpend) {
+      return false
+    }
     
     return true
-  }).map(ad => ({
-    ...ad,
-    ...getFilteredDataByDateRange(ad)
-  }))
-
-  const sortedAds = [...filteredAds].sort((a, b) => {
-    const aVal = a[sortField]
-    const bVal = b[sortField]
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal
-    }
-    return sortDirection === 'asc' 
-      ? String(aVal || '').localeCompare(String(bVal || ''))
-      : String(bVal || '').localeCompare(String(aVal || ''))
   })
 
-  const campaignGroups = sortedAds.reduce((acc: any, ad) => {
-    const campaign = ad.batch || ad.campaign_name || 'Unknown Campaign'
-    if (!acc[campaign]) {
-      acc[campaign] = {
-        campaign_name: campaign,
-        concepts: {},
-        total_spend: 0,
-        total_revenue: 0,
-        total_conversions: 0
+  // Debug logging when persona filter is active
+  if (filters.persona.length > 0) {
+    console.log('🔍 Persona Filter Active:', filters.persona)
+    console.log('📊 Total data rows:', data.length)
+    console.log('📊 Filtered data rows:', filteredData.length)
+    console.log('📊 Sample filtered personas:', filteredData.slice(0, 5).map(d => d.persona))
+    console.log('📊 All unique personas in data:', [...new Set(data.map(d => d.persona))].sort())
+    
+    // Check if the filtered persona exists in the data
+    filters.persona.forEach(p => {
+      const matchingRows = data.filter(d => d.persona === p)
+      console.log(`📊 Rows matching "${p}":`, matchingRows.length)
+      if (matchingRows.length > 0) {
+        console.log(`   Sample ad name:`, matchingRows[0].ad_name)
+        console.log(`   Extracted persona:`, matchingRows[0].persona)
       }
-    }
-    
-    const concept = ad.concept_code || 'Unknown Concept'
-    if (!acc[campaign].concepts[concept]) {
-      acc[campaign].concepts[concept] = []
-    }
-    
-    acc[campaign].concepts[concept].push(ad)
-    acc[campaign].total_spend += ad.spend || 0
-    acc[campaign].total_revenue += ad.revenue || 0
-    acc[campaign].total_conversions += ad.conversions || 0
-    
-    return acc
-  }, {})
-
-  const sortedCampaigns = Object.values(campaignGroups).sort((a: any, b: any) => b.total_spend - a.total_spend)
-  
-  const filteredCampaignCount = new Set(
-    filteredAds.map(ad => ad.batch || ad.campaign_name).filter(v => v && v !== 'Unknown Campaign')
-  ).size
-  const totalCampaignCount = new Set(
-    ads.map(ad => ad.batch || ad.campaign_name).filter(v => v && v !== 'Unknown Campaign')
-  ).size
-
-  const totals = filteredAds.reduce((acc, ad) => {
-    acc.spend += ad.spend || 0
-    acc.revenue += ad.revenue || 0
-    acc.impressions += ad.impressions || 0
-    acc.clicks += ad.clicks || 0
-    acc.conversions += ad.conversions || 0
-    return acc
-  }, { spend: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0 })
-
-  const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
-
-  const campaignOptions = ['All', ...new Set(ads.map(a => a.batch).filter(Boolean))].sort()
-  const deviceOptions = ['All', ...new Set(ads.map(a => a.primary_device).filter(Boolean))].sort()
-  const countryOptions = ['All', ...new Set(ads.map(a => a.primary_country).filter(Boolean))].sort()
-  const personaOptions = ['All', ...new Set(ads.map(a => a.persona).filter(Boolean))].sort()
-  const conceptOptions = ['All', ...new Set(ads.map(a => a.concept_code).filter(Boolean))].sort()
-  const statusOptions = ['All', 'ACTIVE', 'PAUSED']
-
-  const toggleCampaignExpansion = (campaignName: string) => {
-    const newExpanded = new Set(expandedCampaigns)
-    if (newExpanded.has(campaignName)) {
-      newExpanded.delete(campaignName)
-    } else {
-      newExpanded.add(campaignName)
-    }
-    setExpandedCampaigns(newExpanded)
+    })
   }
 
-  const conceptPerformance = Object.entries(
-    filteredAds.reduce((acc: any, ad) => {
-      const concept = ad.concept_code || 'Unknown'
-      if (!acc[concept]) {
-        acc[concept] = { spend: 0, revenue: 0, conversions: 0, count: 0 }
-      }
-      acc[concept].spend += ad.spend || 0
-      acc[concept].revenue += ad.revenue || 0
-      acc[concept].conversions += ad.conversions || 0
-      acc[concept].count += 1
-      return acc
-    }, {})
-  ).map(([concept, data]: [string, any]) => ({
-    concept,
-    ...data,
-    roas: data.spend > 0 ? data.revenue / data.spend : 0
-  })).sort((a, b) => b.spend - a.spend).slice(0, 10)
+  // Get unique values for filters
+  const personaOptions = ['All', ...new Set(data.map(d => d.persona).filter(Boolean))].sort()
+  const conceptOptions = ['All', ...new Set(data.map(d => d.concept_code).filter(Boolean))].sort()
+  const campaignOptions = ['All', ...new Set(data.map(d => d.campaign_name).filter(Boolean))].sort()
 
-  const osBreakdown = Object.entries(
-    filteredAds.reduce((acc: any, ad) => {
-      const device = ad.primary_device || 'Unknown'
-      if (!acc[device]) {
-        acc[device] = { spend: 0, revenue: 0, conversions: 0, ads: 0 }
+  // Aggregate by persona for bar chart
+  const personaAggregated = Object.entries(
+    filteredData.reduce((acc: any, row) => {
+      const persona = row.persona || 'Unknown'
+      
+      if (!acc[persona]) {
+        acc[persona] = {
+          persona,
+          spend: 0,
+          revenue: 0,
+          purchases: 0,
+          impressions: 0
+        }
       }
-      acc[device].spend += ad.spend || 0
-      acc[device].revenue += ad.revenue || 0
-      acc[device].conversions += ad.conversions || 0
-      acc[device].ads += 1
+      
+      acc[persona].spend += row.spend || 0
+      acc[persona].revenue += row.revenue || 0
+      acc[persona].purchases += row.purchases || 0
+      acc[persona].impressions += row.impressions || 0
+      
       return acc
     }, {})
-  ).map(([os, data]: [string, any]) => ({
-    os,
+  ).map(([persona, data]: [string, any]) => ({
     ...data,
     roas: data.spend > 0 ? data.revenue / data.spend : 0
   })).sort((a, b) => b.spend - a.spend)
 
-  const extractWeek = (campaignName: string) => {
-    const match = campaignName?.match(/(\d{4})Week(\d+)|W(\d+)/i)
-    if (match) {
-      const year = match[1] ? parseInt(match[1]) : 2025
-      const week = parseInt(match[2] || match[3])
-      return { year, week, weekKey: `${year}W${week.toString().padStart(2, '0')}` }
-    }
-    return null
-  }
-
-  const historicalData = Object.values(
-    filteredAds.reduce((acc: any, ad) => {
-      const weekInfo = extractWeek(ad.batch || ad.campaign_name || '')
-      if (!weekInfo) return acc
+  // Weekly trend by persona
+  const weeklyTrendRaw = Object.entries(
+    filteredData.reduce((acc: any, row) => {
+      const week = row.week || 'Unknown'
+      const persona = row.persona || 'Unknown'
       
-      const weekKey = weekInfo.weekKey
-      if (!acc[weekKey]) {
-        acc[weekKey] = {
-          week: weekKey,
-          year: weekInfo.year,
-          weekNum: weekInfo.week,
-          sortKey: weekInfo.year * 100 + weekInfo.week,
-          spend: 0,
-          revenue: 0,
-          ads: 0
+      // Debug log for first few rows when 3040 is filtered
+      if (filters.persona.includes('3040') && Object.keys(acc).length < 3) {
+        console.log('📊 [Reduce] Processing row:', {
+          week,
+          persona,
+          spend: row.spend,
+          ad_name: row.ad_name?.substring(0, 50)
+        })
+      }
+      
+      if (!acc[week]) {
+        acc[week] = {
+          week,
+          total_revenue: 0
         }
       }
-      acc[weekKey].spend += ad.spend || 0
-      acc[weekKey].revenue += ad.revenue || 0
-      acc[weekKey].ads += 1
+      
+      const spendKey = `${persona}_spend`
+      const roasKey = `${persona}_roas`
+      
+      if (!acc[week][spendKey]) {
+        acc[week][spendKey] = 0
+        acc[week][roasKey] = 0
+        acc[week][`${persona}_revenue`] = 0
+        
+        if (filters.persona.includes('3040') && persona === '3040') {
+          console.log(`📊 [Reduce] Created new key "${spendKey}" for week "${week}"`)
+        }
+      }
+      
+      acc[week][spendKey] += row.spend || 0
+      acc[week][`${persona}_revenue`] += row.revenue || 0
+      acc[week].total_revenue += row.revenue || 0
+      
+      if (filters.persona.includes('3040') && persona === '3040' && Object.keys(acc).length === 1) {
+        console.log(`📊 [Reduce] After adding: ${spendKey} = ${acc[week][spendKey]}`)
+      }
+      
       return acc
     }, {})
-  ).sort((a: any, b: any) => a.sortKey - b.sortKey)
-
-  const SortIcon = ({ field }: { field: string }) => (
-    <svg 
-      className={`w-4 h-4 inline ml-1 ${sortField === field ? 'text-cyan-600' : 'text-gray-400'}`}
-      fill="none" stroke="currentColor" viewBox="0 0 24 24"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sortField === field && sortDirection === 'asc' ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
-    </svg>
   )
+  
+  // Get unique personas from filtered data (not all data!)
+  const filteredPersonas = [...new Set(filteredData.map(d => d.persona).filter(Boolean))]
+  
+  const weeklyTrend = weeklyTrendRaw.map(([week, data]: [string, any], index: number) => {
+    const result: any = { week, total_revenue: data.total_revenue }
+    
+    // Debug: log what keys exist in data before mapping (first week only)
+    if (filters.persona.includes('3040') && index === 0) {
+      console.log(`📊 [Map] First week "${week}" data keys:`, Object.keys(data))
+      console.log(`📊 [Map] Has 3040_spend:`, '3040_spend' in data)
+      console.log(`📊 [Map] 3040_spend value from reduce:`, data['3040_spend'])
+      console.log(`📊 [Map] Filtered personas to iterate:`, filteredPersonas)
+    }
+    
+    // IMPORTANT: Only iterate through personas in FILTERED data, not ALL personas!
+    filteredPersonas.forEach(persona => {
+      const spendKey = `${persona}_spend`
+      const revenueKey = `${persona}_revenue`
+      const roasKey = `${persona}_roas`
+      
+      // Use values from reduce accumulator
+      result[spendKey] = data[spendKey] || 0
+      result[roasKey] = data[spendKey] > 0 ? (data[revenueKey] || 0) / data[spendKey] : 0
+      
+      // Debug: log when we're adding 3040 keys (first week only)
+      if (filters.persona.includes('3040') && persona === '3040' && index === 0) {
+        console.log(`📊 [Map] Adding key "${spendKey}" with value:`, result[spendKey])
+        console.log(`📊 [Map] Source value from data[${spendKey}]:`, data[spendKey])
+      }
+    })
+    
+    return result
+  }).sort((a, b) => a.week.localeCompare(b.week))
 
-  const dateRangePresets: { label: string; value: DateRangeOption; available: boolean }[] = [
-    { label: 'Today', value: 'today', available: true },
-    { label: 'Yesterday', value: 'yesterday', available: true },
-    { label: 'Last 7 days', value: 'last_7d', available: true },
-    { label: 'Last 14 days', value: 'last_14d', available: true },
-    { label: 'Last 28 days', value: 'last_28d', available: true },
-    { label: 'Last 30 days', value: 'last_30d', available: true },
-    { label: 'This week', value: 'this_week', available: true },
-    { label: 'Last week', value: 'last_week', available: true },
-    { label: 'This month', value: 'this_month', available: true },
-    { label: 'Last month', value: 'last_month', available: true },
-  ]
+  // Debug weekly trend when persona filter is active
+  if (filters.persona.length > 0) {
+    console.log('📊 === DEBUGGING 3040 PERSONA ===')
+    console.log('📊 Filtered Data Length:', filteredData.length)
+    console.log('📊 Sample Filtered Rows:', filteredData.slice(0, 3).map(d => ({
+      persona: d.persona,
+      spend: d.spend,
+      week: d.week,
+      ad_name: d.ad_name?.substring(0, 40)
+    })))
+    console.log('📊 Weekly Trend Length:', weeklyTrend.length)
+    console.log('📊 Weekly Trend Data (ALL weeks):', weeklyTrend)
+    console.log('📊 Persona Aggregated:', personaAggregated)
+    console.log('📊 Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
+      persona: p.persona,
+      spend: p.spend,
+      dataKey: `${p.persona}_spend`
+    })))
+    
+    // Check if the dataKey exists in weeklyTrend
+    if (weeklyTrend.length > 0 && personaAggregated.length > 0) {
+      const firstPersona = personaAggregated[0].persona
+      const dataKey = `${firstPersona}_spend`
+      console.log('📊 Checking if dataKey exists in weeklyTrend:')
+      console.log(`   DataKey: "${dataKey}"`)
+      console.log(`   First week has this key:`, weeklyTrend[0].hasOwnProperty(dataKey))
+      console.log(`   First week value:`, weeklyTrend[0][dataKey])
+      console.log(`   All keys in first week:`, Object.keys(weeklyTrend[0]))
+      
+      // IMPORTANT: Check ALL weeks for this key
+      const weeksWithData = weeklyTrend.filter(w => w[dataKey] && w[dataKey] > 0)
+      console.log(`📊 Weeks with ${dataKey} > 0:`, weeksWithData.length, '/', weeklyTrend.length)
+      if (weeksWithData.length > 0) {
+        console.log(`📊 Sample weeks with data:`, weeksWithData.slice(0, 3).map(w => ({
+          week: w.week,
+          spend: w[dataKey]
+        })))
+      }
+      
+      // Check scale issue
+      const maxSpend = Math.max(...weeklyTrend.map(w => w[dataKey] || 0))
+      const maxRevenue = Math.max(...weeklyTrend.map(w => w.total_revenue || 0))
+      console.log('📊 SCALE ANALYSIS:')
+      console.log(`   Max weekly spend: $${maxSpend}`)
+      console.log(`   Max weekly revenue: $${maxRevenue}`)
+      console.log(`   Ratio: ${maxRevenue > 0 ? (maxSpend / maxRevenue * 100).toFixed(2) : 0}% (spend vs revenue)`)
+      if (maxSpend < maxRevenue * 0.1 && maxSpend > 0) {
+        console.warn('⚠️ WARNING: Spend values are <10% of revenue! Line may be barely visible at bottom of chart!')
+      }
+      if (maxSpend === 0) {
+        console.error('🚨 ERROR: Max spend is $0! No data in weeklyTrend for this persona!')
+      }
+    }
+  }
+
+  // Calculate totals
+  const totals = filteredData.reduce((acc, row) => {
+    acc.spend += row.spend || 0
+    acc.revenue += row.revenue || 0
+    acc.purchases += row.purchases || 0
+    acc.impressions += row.impressions || 0
+    return acc
+  }, { spend: 0, revenue: 0, purchases: 0, impressions: 0 })
+
+  const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
+
+  // Define colors for personas (dynamic based on actual personas found)
+  const personaColors: Record<string, string> = {
+    'Passportbro': '#3B82F6',
+    'PassportBro': '#3B82F6',
+    'PassportGirl': '#EF4444',
+    '30Female': '#EC4899',
+    '30Male': '#3B82F6',
+    '40Female': '#F97316',
+    '40Male': '#8B5CF6',
+    'BLK': '#8B5CF6',
+    '6figures': '#10B981',
+    'AsianMaleSouthEastAsianFemale': '#F59E0B',
+    'Unknown': '#6B7280'
+  }
 
   if (loading) {
     return (
       <div className={`rounded-xl p-12 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
-          <span className={`ml-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Loading concept performance...</span>
+          <span className={`ml-3 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Loading persona report...</span>
         </div>
       </div>
     )
@@ -447,6 +421,16 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Creative Persona Report
+        </h2>
+        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          Analyze performance by persona and week
+        </p>
+      </div>
+
       {/* Filters */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-2 mb-4">
@@ -456,124 +440,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Filters</h3>
         </div>
 
-        {/* Date Range Picker */}
-        <div className="mb-4">
-          <label className={`block text-xs font-medium mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Date Range
-          </label>
-          
-          <div className="relative">
-            <button
-              onClick={() => setShowDatePicker(!showDatePicker)}
-              className={`w-full px-4 py-3 text-left rounded-lg border flex items-center justify-between ${
-                isDark ? 'bg-gray-700 border-gray-600 text-white hover:bg-gray-600' : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
-              } transition-colors`}
-            >
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="font-medium">{getDateRangeLabel(filters.dateRange)}</span>
-              </div>
-              <svg className={`w-5 h-5 transition-transform ${showDatePicker ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {showDatePicker && (
-              <div className={`absolute z-50 mt-2 w-96 rounded-xl shadow-2xl border ${
-                isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-              }`}>
-                <div className="p-4">
-                  <div className={`text-sm font-semibold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Recently used
-                  </div>
-                  
-                  <div className="space-y-1 max-h-96 overflow-y-auto">
-                    {dateRangePresets.map((preset) => (
-                      <button
-                        key={preset.value}
-                        onClick={() => {
-                          if (preset.available) {
-                            setFilters({...filters, dateRange: preset.value})
-                            setShowDatePicker(false)
-                          }
-                        }}
-                        disabled={!preset.available}
-                        className={`w-full px-3 py-2.5 rounded-lg text-left flex items-center gap-3 transition-colors ${
-                          filters.dateRange === preset.value
-                            ? 'bg-cyan-600 text-white'
-                            : preset.available
-                            ? isDark 
-                              ? 'hover:bg-gray-700 text-gray-300' 
-                              : 'hover:bg-gray-50 text-gray-700'
-                            : isDark
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : 'text-gray-400 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          filters.dateRange === preset.value
-                            ? 'border-white'
-                            : isDark ? 'border-gray-600' : 'border-gray-300'
-                        }`}>
-                          {filters.dateRange === preset.value && (
-                            <div className="w-2.5 h-2.5 rounded-full bg-white"></div>
-                          )}
-                        </div>
-                        <span className="flex-1">{preset.label}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className={`mt-4 p-3 rounded-lg text-xs ${isDark ? 'bg-gray-900/50 text-gray-400' : 'bg-blue-50 text-blue-700'}`}>
-                    <div className="flex items-start gap-2">
-                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                      </svg>
-                      <div>
-                        <div className="font-semibold mb-1">Data Availability:</div>
-                        <div>• Last 7 days: Uses _7d columns</div>
-                        <div>• Last 14 days: Uses _prev columns</div>
-                        <div>• Last 28 days: Uses _28d columns</div>
-                        <div>• Last 30 days: Uses _30d columns</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Currently showing: <span className="font-semibold text-cyan-600">{getDateRangeLabel(filters.dateRange)}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-6 gap-4 mb-4">
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Campaign</label>
-            <select value={filters.campaign} onChange={(e) => setFilters({...filters, campaign: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {campaignOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Device</label>
-            <select value={filters.device} onChange={(e) => setFilters({...filters, device: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {deviceOptions.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Country</label>
-            <select value={filters.country} onChange={(e) => setFilters({...filters, country: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {countryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          
-          {/*  UPDATED: Multi-select Persona filter */}
+        <div className="grid grid-cols-4 gap-4 mb-4">
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Persona {filters.persona.length > 0 && <span className="text-cyan-600">({filters.persona.length} selected)</span>}
@@ -586,7 +453,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                 setFilters({...filters, persona: selected})
               }}
               className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-              size={4}
+              size={5}
             >
               {personaOptions.filter(p => p !== 'All').map(p => (
                 <option key={p} value={p} className={filters.persona.includes(p) ? 'bg-cyan-600 text-white' : ''}>
@@ -598,7 +465,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
               Hold Ctrl/Cmd to select multiple
             </div>
           </div>
-          
+
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               Concept {filters.concept.length > 0 && <span className="text-cyan-600">({filters.concept.length} selected)</span>}
@@ -611,7 +478,7 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
                 setFilters({...filters, concept: selected})
               }}
               className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-              size={4}
+              size={5}
             >
               {conceptOptions.filter(c => c !== 'All').map(c => (
                 <option key={c} value={c} className={filters.concept.includes(c) ? 'bg-cyan-600 text-white' : ''}>
@@ -623,16 +490,15 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
               Hold Ctrl/Cmd to select multiple
             </div>
           </div>
+
           <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Status</label>
-            <select value={filters.status} onChange={(e) => setFilters({...filters, status: e.target.value})}
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Campaign</label>
+            <select value={filters.campaign} onChange={(e) => setFilters({...filters, campaign: e.target.value})}
               className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+              {campaignOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-        </div>
 
-        <div className="grid grid-cols-6 gap-4">
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Min Spend ($)</label>
             <input
@@ -645,32 +511,21 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           </div>
         </div>
 
-        <div className="flex items-center justify-between mt-4">
+        <div className="flex items-center justify-between">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing <span className="font-semibold text-cyan-600">{sortedAds.length}</span> ads across{' '}
-            <span className="font-semibold text-cyan-600">{filteredCampaignCount}</span> 
-            {filteredCampaignCount !== totalCampaignCount && (
-              <span> of <span className="font-semibold">{totalCampaignCount}</span></span>
-            )} campaigns
+            Showing <span className="font-semibold text-cyan-600">{filteredData.length.toLocaleString()}</span> ads
             {filters.persona.length > 0 && <span className="ml-2 text-cyan-600">• {filters.persona.length} persona(s) filtered</span>}
             {filters.concept.length > 0 && <span className="ml-2 text-cyan-600">• {filters.concept.length} concept(s) filtered</span>}
           </div>
-          <div className="flex items-center gap-2">
-            {ads.length >= 50000 && (
-              <div className={`text-xs px-3 py-1 rounded-full ${isDark ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-700/50' : 'bg-yellow-100 text-yellow-700 border border-yellow-300'}`}>
-                 Data limit reached - some campaigns may be missing
-              </div>
-            )}
-            <button onClick={() => setFilters({ campaign: 'All', device: 'All', country: 'All', persona: [], concept: [], status: 'All', minSpend: 0, dateRange: 'last_7d' })}
-              className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-              Clear Filters
-            </button>
-          </div>
+          <button onClick={() => setFilters({ persona: [], concept: [], campaign: 'All', minSpend: 0 })}
+            className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+            Clear Filters
+          </button>
         </div>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Total Spend</div>
           <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${safeNumber(totals.spend / 1000, 1)}K</div>
@@ -686,25 +541,56 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
           </div>
         </div>
         <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Conversions</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{totals.conversions.toLocaleString()}</div>
-        </div>
-        <div className={`rounded-xl p-4 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Active Ads</div>
-          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{sortedAds.length}</div>
+          <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Purchases</div>
+          <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{totals.purchases.toLocaleString()}</div>
         </div>
       </div>
+
+      {/* No Data Warning */}
+      {filters.persona.length > 0 && filteredData.length === 0 && (
+        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-yellow-900/20 border-yellow-700' : 'bg-yellow-50 border-yellow-200'}`}>
+          <div className="flex items-start gap-3">
+            <svg className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-yellow-400' : 'text-yellow-800'}`}>
+                No Data Found
+              </h3>
+              <p className={`text-sm mb-3 ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                No data found for persona: <span className="font-semibold">{filters.persona.join(', ')}</span>
+              </p>
+              <div className={`text-xs ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                <p className="mb-2">This could mean:</p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>The persona value in the filter doesn't match the data exactly</li>
+                  <li>No ads have this persona assigned</li>
+                  <li>The ad name format for this persona is different</li>
+                </ul>
+                <p className="mt-3">
+                  <strong>Tip:</strong> Open the browser console (F12) to see debug logs showing:
+                </p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>All unique persona values in the data</li>
+                  <li>Sample ad names</li>
+                  <li>Extraction details</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Spend vs ROAS Bar Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          Spend vs ROAS by Concept
+          Spend vs ROAS by Persona
         </h3>
         <ResponsiveContainer width="100%" height={450}>
-          <BarChart data={conceptPerformance} margin={{ bottom: 80 }}>
+          <BarChart data={personaAggregated} margin={{ bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
             <XAxis 
-              dataKey="concept" 
+              dataKey="persona" 
               stroke={isDark ? '#9CA3AF' : '#6B7280'}
               angle={-60}
               textAnchor="end"
@@ -737,257 +623,187 @@ export default function ConceptPerformanceView({ isDark }: ConceptPerformanceVie
         </ResponsiveContainer>
       </div>
 
-      {/* Historical Spend vs Revenue Trend */}
-      {historicalData.length > 0 && (
-        <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Historical Spend vs Revenue Trend
-          </h3>
-          <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Weekly performance across all creatives (non-cumulative)
-          </p>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={historicalData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
-              <XAxis 
-                dataKey="week" 
-                stroke={isDark ? '#9CA3AF' : '#6B7280'}
-                tick={{ fontSize: 11 }}
-              />
-              <YAxis stroke={isDark ? '#9CA3AF' : '#6B7280'} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: isDark ? '#1F2937' : '#FFFFFF', 
-                  border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, 
-                  borderRadius: '8px' 
-                }}
-              />
-              <Legend />
-              <Line 
-                type="monotone" 
-                dataKey="spend" 
-                stroke="#06B6D4" 
-                strokeWidth={3}
-                dot={{ fill: '#06B6D4', r: 4 }}
-                name="Spend ($)"
-              />
-              <Line 
-                type="monotone" 
-                dataKey="revenue" 
-                stroke="#10B981" 
-                strokeWidth={3}
-                dot={{ fill: '#10B981', r: 4 }}
-                name="Revenue ($)"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-          <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-             Showing weekly spend and revenue - not cumulative
-          </div>
-        </div>
-      )}
-
-      {/* Top Performing Concepts Chart */}
+      {/* Weekly Trend Line Chart */}
       <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Top 10 Concepts - Spend vs Revenue</h3>
-        <ResponsiveContainer width="100%" height={450}>
-          <BarChart data={conceptPerformance} layout="horizontal" margin={{ bottom: 80 }}>
+        <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          Persona Performance Over Time
+        </h3>
+        <p className={`text-sm mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          Weekly spend by top personas (showing top 5 by total spend)
+        </p>
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={weeklyTrend}>
             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
             <XAxis 
-              type="category" 
-              dataKey="concept" 
-              stroke={isDark ? '#9CA3AF' : '#6B7280'} 
-              angle={-60} 
-              textAnchor="end" 
-              height={120}
+              dataKey="week" 
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              angle={0}
+              textAnchor="middle"
+              height={60}
+              tick={{ fontSize: 10 }}
               interval={0}
-              tick={{ fontSize: 11 }}
             />
-            <YAxis type="number" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
-            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: '8px' }} />
-            <Legend />
-            <Bar dataKey="spend" fill="#06B6D4" name="Spend ($)" />
-            <Bar dataKey="revenue" fill="#10B981" name="Revenue ($)" />
-          </BarChart>
+            <YAxis 
+              yAxisId="left"
+              stroke={isDark ? '#9CA3AF' : '#6B7280'}
+              label={{ value: 'Spend ($)', angle: -90, position: 'insideLeft' }}
+            />
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              stroke="#F97316"
+              label={{ value: 'Revenue ($)', angle: 90, position: 'insideRight' }}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: isDark ? '#1F2937' : '#FFFFFF', 
+                border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
+                borderRadius: '8px'
+              }}
+            />
+            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+            
+            {/* Show personas from filtered data */}
+            {filteredPersonas.slice(0, 5).map((persona, index) => {
+              const dataKey = `${persona}_spend`
+              const color = personaColors[persona] || ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'][index]
+              
+              // Get total spend for this persona
+              const personaTotal = filteredData
+                .filter(d => d.persona === persona)
+                .reduce((sum, d) => sum + (d.spend || 0), 0)
+              
+              // Debug log for each line being created
+              if (filters.persona.length > 0) {
+                console.log(`📊 Creating Line for persona "${persona}":`, {
+                  dataKey,
+                  color,
+                  totalSpend: personaTotal,
+                  sampleWeekValues: weeklyTrend.slice(0, 2).map(w => ({
+                    week: w.week,
+                    value: w[dataKey]
+                  }))
+                })
+              }
+              
+              return (
+                <Line
+                  key={dataKey}
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  strokeWidth={3}
+                  dot={{ r: 5 }}
+                  name={`${persona} Spend`}
+                />
+              )
+            })}
+            
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="total_revenue"
+              stroke="#F97316"
+              strokeWidth={4}
+              dot={{ fill: '#F97316', r: 6 }}
+              name="Total Revenue"
+            />
+          </LineChart>
         </ResponsiveContainer>
-      </div>
-
-      {/* Performance by OS/Device */}
-      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Performance by OS/Device</h3>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={osBreakdown}>
-            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
-            <XAxis dataKey="os" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
-            <YAxis stroke={isDark ? '#9CA3AF' : '#6B7280'} />
-            <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: '8px' }} />
-            <Legend />
-            <Bar dataKey="spend" fill="#06B6D4" name="Spend ($)" />
-            <Bar dataKey="revenue" fill="#10B981" name="Revenue ($)" />
-            <Bar dataKey="ads" fill="#8B5CF6" name="Ad Count" />
-          </BarChart>
-        </ResponsiveContainer>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {osBreakdown.map((os) => (
-            <div key={os.os} className={`p-2 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{os.os}</div>
-              <div className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                ROAS: {os.roas.toFixed(2)}x
+        
+        <div className={`mt-4 grid grid-cols-auto-fit gap-2`} style={{gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'}}>
+          {filteredPersonas.slice(0, 5).map(persona => {
+            // Calculate metrics for this persona from filtered data
+            const personaRows = filteredData.filter(d => d.persona === persona)
+            const personaSpend = personaRows.reduce((sum, d) => sum + (d.spend || 0), 0)
+            const personaRevenue = personaRows.reduce((sum, d) => sum + (d.revenue || 0), 0)
+            const avgRoas = personaSpend > 0 ? personaRevenue / personaSpend : 0
+            
+            return (
+              <div key={persona} className={`p-2 rounded ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{persona}</div>
+                <div className={`text-sm font-semibold ${avgRoas >= 1 ? 'text-green-600' : 'text-red-600'}`}>
+                  Avg ROAS: {safeNumber(avgRoas, 2)}x
+                </div>
+                <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-600'}`}>
+                  Spend: ${safeNumber(personaSpend / 1000, 1)}K
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
+        
+        {filteredPersonas.length > 5 && (
+          <div className={`mt-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Showing top 5 personas by spend. Use filters above to see specific personas.
+          </div>
+        )}
       </div>
 
-      {/* Concept Performance Summary */}
-      <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Concept Performance Summary</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {conceptPerformance.map((concept, idx) => (
-            <div key={concept.concept} className={`p-3 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-              <div className="flex justify-between items-start mb-2">
-                <div className={`font-medium text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{concept.concept}</div>
-                <div className={`text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-600 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
-                  {concept.count} ads
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Spend</div>
-                  <div className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>${safeNumber(concept.spend, 0)}</div>
-                </div>
-                <div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Revenue</div>
-                  <div className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>${safeNumber(concept.revenue, 0)}</div>
-                </div>
-                <div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>ROAS</div>
-                  <div className={`font-semibold ${concept.roas >= 2 ? 'text-green-600' : concept.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {safeNumber(concept.roas, 2)}x
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Campaign - Concept - Ads Breakdown */}
+      {/* Detailed Table */}
       <div className={`rounded-xl overflow-hidden shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="p-6">
-          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Campaign Performance by Concept</h3>
-          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Click to expand and see which concepts are performing in each campaign</p>
+          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
+          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Showing all {filteredData.length.toLocaleString()} rows
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className={isDark ? 'bg-gray-750' : 'bg-gray-50'}>
+        <div className="overflow-x-auto max-h-[600px]">
+          <table className="w-full text-xs">
+            <thead className={`sticky top-0 ${isDark ? 'bg-gray-750' : 'bg-gray-50'}`}>
               <tr>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}></th>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Campaign / Concept / Ad</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Device</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Persona</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Conversions</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPM</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR</th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Week</th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Campaign</th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Ad Name</th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Persona</th>
+                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Concept</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Purchases</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPP</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Impressions</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Link Clicks</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPM</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPC</th>
+                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Frequency</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {sortedCampaigns.map((campaign: any) => {
-                const isExpanded = expandedCampaigns.has(campaign.campaign_name)
-                const campaignRoas = campaign.total_spend > 0 ? campaign.total_revenue / campaign.total_spend : 0
-                
-                return (
-                  <React.Fragment key={campaign.campaign_name}>
-                    <tr className={`${isDark ? 'bg-gray-800 hover:bg-gray-750' : 'bg-white hover:bg-gray-50'} font-semibold`}>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => toggleCampaignExpansion(campaign.campaign_name)}
-                          className="p-1 rounded hover:bg-gray-600 transition-colors"
-                        >
-                          <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      </td>
-                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{campaign.campaign_name}</td>
-                      <td className="px-4 py-3"></td>
-                      <td className="px-4 py-3"></td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>${safeNumber(campaign.total_spend, 0)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>${safeNumber(campaign.total_revenue, 0)}</td>
-                      <td className={`px-4 py-3 text-sm text-right font-bold ${campaignRoas >= 2 ? 'text-green-600' : campaignRoas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {safeNumber(campaignRoas, 2)}x
-                      </td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-white' : 'text-gray-900'}`}>{campaign.total_conversions}</td>
-                      <td className="px-4 py-3"></td>
-                      <td className="px-4 py-3"></td>
-                    </tr>
-
-                    {isExpanded && Object.entries(campaign.concepts).map(([conceptName, conceptAds]: [string, any]) => {
-                      const conceptSpend = conceptAds.reduce((sum: number, ad: any) => sum + (ad.spend || 0), 0)
-                      const conceptRevenue = conceptAds.reduce((sum: number, ad: any) => sum + (ad.revenue || 0), 0)
-                      const conceptConversions = conceptAds.reduce((sum: number, ad: any) => sum + (ad.conversions || 0), 0)
-                      const conceptRoas = conceptSpend > 0 ? conceptRevenue / conceptSpend : 0
-
-                      return (
-                        <React.Fragment key={`${campaign.campaign_name}-${conceptName}`}>
-                          <tr className={`${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
-                            <td className="px-4 py-2"></td>
-                            <td className={`px-4 py-2 text-sm ${isDark ? 'text-cyan-400' : 'text-cyan-700'}`}>
-                              <span className="ml-6"> {conceptName}</span>
-                              <span className={`ml-2 text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
-                                {conceptAds.length} ads
-                              </span>
-                            </td>
-                            <td className="px-4 py-2"></td>
-                            <td className="px-4 py-2"></td>
-                            <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>${safeNumber(conceptSpend, 0)}</td>
-                            <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>${safeNumber(conceptRevenue, 0)}</td>
-                            <td className={`px-4 py-2 text-sm text-right font-semibold ${conceptRoas >= 2 ? 'text-green-600' : conceptRoas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {safeNumber(conceptRoas, 2)}x
-                            </td>
-                            <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>{conceptConversions}</td>
-                            <td className="px-4 py-2"></td>
-                            <td className="px-4 py-2"></td>
-                          </tr>
-
-                          {conceptAds.sort((a: any, b: any) => (b.spend || 0) - (a.spend || 0)).map((ad: any) => (
-                            <tr key={ad.id} className={`${isDark ? 'bg-gray-900/30 hover:bg-gray-900/40' : 'bg-gray-50/50 hover:bg-gray-100'}`}>
-                              <td className="px-4 py-2"></td>
-                              <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                                <span className="ml-12">• {ad.ad_name || 'Unnamed Ad'}</span>
-                              </td>
-                              <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  ad.primary_device === 'iOS' ? 'bg-gray-700 text-gray-200' : 
-                                  ad.primary_device === 'Android' ? 'bg-green-700 text-green-200' : 
-                                  ad.primary_device === 'Desktop' ? 'bg-blue-700 text-blue-200' :
-                                  'bg-gray-600 text-gray-300'
-                                }`}>
-                                  {ad.primary_device || 'Unknown'}
-                                </span>
-                              </td>
-                              <td className={`px-4 py-2 text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                                {ad.persona || 'N/A'}
-                              </td>
-                              <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(ad.spend, 0)}</td>
-                              <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(ad.revenue, 0)}</td>
-                              <td className={`px-4 py-2 text-sm text-right ${ad.roas >= 2 ? 'text-green-600' : ad.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                {safeNumber(ad.roas, 2)}x
-                              </td>
-                              <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{ad.conversions || 0}</td>
-                              <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber((ad.impressions > 0 ? (ad.spend / ad.impressions) * 1000 : 0), 2)}</td>
-                              <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber((ad.impressions > 0 ? (ad.clicks / ad.impressions) : 0) * 100, 2)}%</td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      )
-                    })}
-                  </React.Fragment>
-                )
-              })}
+              {filteredData.map((row, idx) => (
+                <tr key={idx} className={`${isDark ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}>
+                  <td className={`px-3 py-2 whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.week}</td>
+                  <td className={`px-3 py-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.campaign_name}</td>
+                  <td className={`px-3 py-2 max-w-xs truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`} title={row.ad_name}>{row.ad_name}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs ${
+                      row.persona.includes('Male') ? 'bg-blue-900/30 text-blue-400' :
+                      row.persona.includes('Female') ? 'bg-pink-900/30 text-pink-400' :
+                      row.persona === 'BLK' ? 'bg-purple-900/30 text-purple-400' :
+                      row.persona.includes('Passport') ? 'bg-blue-900/30 text-blue-400' :
+                      'bg-gray-700 text-gray-400'
+                    }`}>
+                      {row.persona}
+                    </span>
+                  </td>
+                  <td className={`px-3 py-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{row.concept_code}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(row.spend, 2)}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(row.revenue, 2)}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap font-semibold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {safeNumber(row.roas, 2)}x
+                  </td>
+                  <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.purchases || 0}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(row.cost_per_purchase, 2)}</td>
+                  <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{(row.impressions || 0).toLocaleString()}</td>
+                  <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{(row.link_clicks || 0).toLocaleString()}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber((row.ctr || 0) * 100, 2)}%</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(row.cpm, 2)}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber((row.link_clicks || 0) > 0 ? row.spend / row.link_clicks : 0, 2)}</td>
+                  <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(row.frequency, 2)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
