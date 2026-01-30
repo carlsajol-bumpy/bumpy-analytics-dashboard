@@ -81,16 +81,28 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
       console.log('📊 Total rows fetched:', reportData?.length)
       console.log('📊 Sample row:', reportData?.[0])
+      console.log('📊 Available columns:', Object.keys(reportData?.[0] || {}))
+      console.log('📊 Checking for pre-existing columns:')
+      console.log('   - Persona column exists:', 'Persona' in (reportData?.[0] || {}))
+      console.log('   - Concept column exists:', 'Concept' in (reportData?.[0] || {}))
+      console.log('   - Week column exists:', 'Week' in (reportData?.[0] || {}))
+      console.log('📊 Sample values:')
+      console.log('   - Persona:', reportData?.[0]?.['Persona'])
+      console.log('   - Concept:', reportData?.[0]?.['Concept'])
+      console.log('   - Week:', reportData?.[0]?.['Week'])
       
-      // Log first 10 ad names to see the pattern
-      console.log('📊 Sample ad names (first 10):')
-      reportData?.slice(0, 10).forEach((row: any, idx: number) => {
+      // Log first 5 ad names to see the pattern
+      console.log('📊 Sample ad names (first 5):')
+      reportData?.slice(0, 5).forEach((row: any, idx: number) => {
         const adName = row['Ad name'] || ''
         const parts = adName.split('-')
         console.log(`  ${idx + 1}. Ad: ${adName}`)
+        console.log(`     Persona from column: ${row['Persona']}`)
+        console.log(`     Concept from column: ${row['Concept']}`)
+        console.log(`     Week from column: ${row['Week']}`)
         console.log(`     Parts: [${parts.join('] [')}]`)
-        console.log(`     Concept (pos 2): ${parts[2] || 'N/A'}`)
-        console.log(`     Persona (pos 3): ${parts[3] || 'N/A'}`)
+        console.log(`     Extracted persona (pos 3): ${parts[3] || 'N/A'}`)
+        console.log(`     Extracted concept (pos 2): ${parts[2] || 'N/A'}`)
       })
       
       if (!reportData || reportData.length === 0) {
@@ -109,17 +121,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         const impressions = parseInt(row['Impressions'] || 0)
         const linkClicks = parseInt(row['Link clicks'] || 0)
         
-        // Format week to YY-MM-DD format
+        // Use Week column AS-IS - it's already formatted correctly!
         const weekRaw = row['Week'] || ''
-        const formattedWeek = formatWeekShort(weekRaw)
         
         return {
           ...row,
-          // Extract persona and concept from AD NAME using SAME logic as By Concept
-          persona: extractPersona(adName),
-          concept_code: extractConceptCode(adName),
+          // Use existing Persona and Concept columns from Supabase (don't extract!)
+          persona: row['Persona'] || row['PERSONA'] || extractPersona(adName) || 'Unknown',
+          concept_code: row['Concept'] || row['CONCEPT'] || extractConceptCode(adName) || 'Unknown',
           // Normalize column names for easier access
-          week: formattedWeek,
+          week: weekRaw,  // Use raw week value directly!
           week_raw: weekRaw,
           campaign_name: campaignName,
           ad_name: adName,
