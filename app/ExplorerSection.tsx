@@ -7,14 +7,23 @@ interface ExplorerSectionProps {
   isDark?: boolean
 }
 
+// Column mapping for different timeframes
+const TIMEFRAME_COLUMNS: Record<string, string> = {
+  '7d': '_7d',      // Uses spend_7d, revenue_7d, etc.
+  '14d': '_prev',   // Uses spend_prev, revenue_prev, etc. (14d data is in prev columns)
+  '28d': '_28d',    // Uses spend_28d, revenue_28d, etc.
+  '30d': '_30d'     // Uses spend_30d, revenue_30d, etc.
+}
+
 export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
   const [ads, setAds] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [sortField, setSortField] = useState('updated_at')
+  const [sortField, setSortField] = useState('spend')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   
-  // Filters
+  // Filters - ADDED timeframe
   const [filters, setFilters] = useState({
+    timeframe: '7d',
     batch: 'All',
     week: 'All',
     persona: 'All',
@@ -25,7 +34,8 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
 
   // CSV Export Function
   const handleExportCSV = () => {
-    const filename = `explorer${filters.status !== 'All' ? `_${filters.status}` : ''}${filters.performanceCategory !== 'All' ? `_${filters.performanceCategory}` : ''}`
+    const timeframeLabel = filters.timeframe
+    const filename = `creative_${timeframeLabel}${filters.status !== 'All' ? `_${filters.status}` : ''}${filters.performanceCategory !== 'All' ? `_${filters.performanceCategory}` : ''}`
     
     exportToCSV(
       sortedAds,
@@ -35,13 +45,13 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
         { key: 'concept_code', label: 'Concept' },
         { key: 'persona', label: 'Persona' },
         { key: 'batch', label: 'Batch' },
-        { key: 'spend_7d', label: 'Spend ($)' },
-        { key: 'roas_7d', label: 'ROAS' },
-        { key: 'ctr_7d', label: 'CTR' },
-        { key: 'cpc', label: 'CPC ($)' },
-        { key: 'impressions_7d', label: 'Impressions' },
-        { key: 'clicks_7d', label: 'Clicks' },
-        { key: 'conversions_7d', label: 'Conversions' },
+        { key: 'spend', label: `Spend ${timeframeLabel} ($)` },
+        { key: 'roas', label: `ROAS ${timeframeLabel}` },
+        { key: 'ctr', label: `CTR ${timeframeLabel}` },
+        { key: 'cpc', label: `CPC ${timeframeLabel} ($)` },
+        { key: 'impressions', label: `Impressions ${timeframeLabel}` },
+        { key: 'clicks', label: `Clicks ${timeframeLabel}` },
+        { key: 'conversions', label: `Conversions ${timeframeLabel}` },
         { key: 'performance_category', label: 'Performance Category' }
       ]
     )
@@ -58,7 +68,6 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
     const { data, error, count } = await supabase
       .from('creative_performance')
       .select('*', { count: 'exact' })
-      .order(sortField, { ascending: sortDirection === 'asc' })
       .limit(10000)
 
     console.log('🔍 Explorer: Fetched', data?.length, 'ads. Total in DB:', count)
@@ -85,19 +94,37 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
     return match ? `Week${match[1]}` : batch
   }
 
-  // Filter data
-  const filteredAds = ads.filter(ad => {
-    if (filters.batch !== 'All' && ad.batch !== filters.batch) return false
-    if (filters.week !== 'All') {
-      const adWeek = extractWeekFromBatch(ad.batch)
-      if (adWeek !== filters.week) return false
-    }
-    if (filters.persona !== 'All' && ad.persona !== filters.persona) return false
-    if (filters.conceptCode !== 'All' && ad.concept_code !== filters.conceptCode) return false
-    if (filters.performanceCategory !== 'All' && ad.performance_category !== filters.performanceCategory) return false
-    if (filters.status !== 'All' && ad.status !== filters.status) return false
-    return true
-  })
+  // Get column suffix for current timeframe
+  const getColumnSuffix = () => TIMEFRAME_COLUMNS[filters.timeframe]
+
+  // Filter data and add current timeframe metrics
+  const filteredAds = ads
+    .filter(ad => {
+      if (filters.batch !== 'All' && ad.batch !== filters.batch) return false
+      if (filters.week !== 'All') {
+        const adWeek = extractWeekFromBatch(ad.batch)
+        if (adWeek !== filters.week) return false
+      }
+      if (filters.persona !== 'All' && ad.persona !== filters.persona) return false
+      if (filters.conceptCode !== 'All' && ad.concept_code !== filters.conceptCode) return false
+      if (filters.performanceCategory !== 'All' && ad.performance_category !== filters.performanceCategory) return false
+      if (filters.status !== 'All' && ad.status !== filters.status) return false
+      return true
+    })
+    .map(ad => {
+      // Add current timeframe data for easier access
+      const suffix = getColumnSuffix()
+      return {
+        ...ad,
+        spend: ad[`spend${suffix}`],
+        roas: ad[`roas${suffix}`],
+        impressions: ad[`impressions${suffix}`],
+        clicks: ad[`clicks${suffix}`],
+        conversions: ad[`conversions${suffix}`],
+        ctr: ad[`ctr${suffix}`],
+        cpc: ad[`cpc${suffix}`] || (ad[`clicks${suffix}`] > 0 ? ad[`spend${suffix}`] / ad[`clicks${suffix}`] : 0)
+      }
+    })
 
   // Sort filtered data
   const sortedAds = [...filteredAds].sort((a, b) => {
@@ -117,14 +144,14 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
 
   // Calculate totals
   const totals = filteredAds.reduce((acc, ad) => {
-    const spend = parseFloat(ad.spend_7d || 0)
-    const roas = parseFloat(ad.roas_7d || 0)
+    const spend = parseFloat(ad.spend || 0)
+    const roas = parseFloat(ad.roas || 0)
     
     acc.spend += spend
     acc.revenue += roas * spend
-    acc.impressions += parseInt(ad.impressions_7d || 0)
-    acc.clicks += parseInt(ad.clicks_7d || 0)
-    acc.conversions += parseInt(ad.conversions_7d || 0)
+    acc.impressions += parseInt(ad.impressions || 0)
+    acc.clicks += parseInt(ad.clicks || 0)
+    acc.conversions += parseInt(ad.conversions || 0)
     return acc
   }, {
     spend: 0,
@@ -174,7 +201,21 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
     <div className="space-y-4">
       {/* Filters */}
       <div className={`rounded-xl p-4 ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
-        <div className="grid grid-cols-6 gap-4">
+        <div className="grid grid-cols-7 gap-4">
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Timeframe</label>
+            <select
+              value={filters.timeframe}
+              onChange={(e) => setFilters({...filters, timeframe: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg ${isDark ? 'bg-gray-700 text-white' : 'bg-white border border-gray-300'}`}
+            >
+              <option value="7d">Last 7 Days</option>
+              <option value="14d">Last 14 Days</option>
+              <option value="28d">Last 28 Days</option>
+              <option value="30d">Last 30 Days</option>
+            </select>
+          </div>
+
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Status</label>
             <select
@@ -244,7 +285,7 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
 
         <div className="flex items-center justify-between mt-4">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing {sortedAds.length} ads
+            Showing {sortedAds.length} ads ({filters.timeframe})
           </div>
           <div className="flex gap-2">
             <button onClick={handleExportCSV}
@@ -255,7 +296,7 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
               Export CSV
             </button>
             <button
-              onClick={() => setFilters({ batch: 'All', week: 'All', persona: 'All', conceptCode: 'All', performanceCategory: 'All', status: 'All' })}
+              onClick={() => setFilters({ timeframe: '7d', batch: 'All', week: 'All', persona: 'All', conceptCode: 'All', performanceCategory: 'All', status: 'All' })}
               className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               Clear Filters
@@ -282,26 +323,26 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
                 <th onClick={() => handleSort('batch')} className={`px-4 py-3 text-left text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Batch <SortIcon field="batch" />
                 </th>
-                <th onClick={() => handleSort('spend_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Spend <SortIcon field="spend_7d" />
+                <th onClick={() => handleSort('spend')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Spend ({filters.timeframe}) <SortIcon field="spend" />
                 </th>
-                <th onClick={() => handleSort('roas_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  ROAS <SortIcon field="roas_7d" />
+                <th onClick={() => handleSort('roas')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  ROAS <SortIcon field="roas" />
                 </th>
-                <th onClick={() => handleSort('ctr_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  CTR <SortIcon field="ctr_7d" />
+                <th onClick={() => handleSort('ctr')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  CTR <SortIcon field="ctr" />
                 </th>
                 <th onClick={() => handleSort('cpc')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   CPC <SortIcon field="cpc" />
                 </th>
-                <th onClick={() => handleSort('impressions_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Impr <SortIcon field="impressions_7d" />
+                <th onClick={() => handleSort('impressions')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Impr <SortIcon field="impressions" />
                 </th>
-                <th onClick={() => handleSort('clicks_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Clicks <SortIcon field="clicks_7d" />
+                <th onClick={() => handleSort('clicks')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Clicks <SortIcon field="clicks" />
                 </th>
-                <th onClick={() => handleSort('conversions_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                  Conv <SortIcon field="conversions_7d" />
+                <th onClick={() => handleSort('conversions')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  Conv <SortIcon field="conversions" />
                 </th>
                 <th onClick={() => handleSort('performance_category')} className={`px-4 py-3 text-left text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Category <SortIcon field="performance_category" />
@@ -322,29 +363,29 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
                   <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{ad.persona}</td>
                   <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{ad.batch}</td>
                   <td className={`px-4 py-3 text-sm text-right font-medium ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
-                    ${parseFloat(ad.spend_7d || 0).toFixed(0)}
+                    ${parseFloat(ad.spend || 0).toFixed(0)}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right font-medium ${
-                    parseFloat(ad.roas_7d) >= 2.0 ? 'text-green-600' : 
-                    parseFloat(ad.roas_7d) >= 1.0 ? 'text-yellow-600' : 
+                    parseFloat(ad.roas) >= 2.0 ? 'text-green-600' : 
+                    parseFloat(ad.roas) >= 1.0 ? 'text-yellow-600' : 
                     'text-red-600'
                   }`}>
-                    {parseFloat(ad.roas_7d || 0).toFixed(2)}x
+                    {parseFloat(ad.roas || 0).toFixed(2)}x
                   </td>
                   <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {(parseFloat(ad.ctr_7d || 0) * 100).toFixed(2)}%
+                    {(parseFloat(ad.ctr || 0) * 100).toFixed(2)}%
                   </td>
                   <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                     ${parseFloat(ad.cpc || 0).toFixed(2)}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {parseInt(ad.impressions_7d || 0).toLocaleString()}
+                    {parseInt(ad.impressions || 0).toLocaleString()}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {parseInt(ad.clicks_7d || 0).toLocaleString()}
+                    {parseInt(ad.clicks || 0).toLocaleString()}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {parseInt(ad.conversions_7d || 0)}
+                    {parseInt(ad.conversions || 0)}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -366,7 +407,7 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
             <tfoot className={`border-t-2 ${isDark ? 'border-gray-600 bg-gray-750' : 'border-gray-300 bg-gray-100'}`}>
               <tr>
                 <td className={`px-4 py-4 text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`} colSpan={4}>
-                  TOTALS ({filteredAds.length} ads)
+                  TOTALS ({filteredAds.length} ads) - {filters.timeframe}
                 </td>
                 <td className={`px-4 py-4 text-sm text-right font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   ${totals.spend.toFixed(0)}
