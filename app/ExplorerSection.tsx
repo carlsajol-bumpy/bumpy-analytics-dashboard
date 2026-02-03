@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { exportToCSV } from '../lib/csvExport'
 
 interface ExplorerSectionProps {
   isDark?: boolean
@@ -21,6 +22,30 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
     performanceCategory: 'All',
     status: 'All'
   })
+
+  // CSV Export Function
+  const handleExportCSV = () => {
+    const filename = `explorer${filters.status !== 'All' ? `_${filters.status}` : ''}${filters.performanceCategory !== 'All' ? `_${filters.performanceCategory}` : ''}`
+    
+    exportToCSV(
+      sortedAds,
+      filename,
+      [
+        { key: 'status', label: 'Status' },
+        { key: 'concept_code', label: 'Concept' },
+        { key: 'persona', label: 'Persona' },
+        { key: 'batch', label: 'Batch' },
+        { key: 'spend_7d', label: 'Spend ($)' },
+        { key: 'roas_7d', label: 'ROAS' },
+        { key: 'ctr_7d', label: 'CTR' },
+        { key: 'cpc', label: 'CPC ($)' },
+        { key: 'impressions_7d', label: 'Impressions' },
+        { key: 'clicks_7d', label: 'Clicks' },
+        { key: 'conversions_7d', label: 'Conversions' },
+        { key: 'performance_category', label: 'Performance Category' }
+      ]
+    )
+  }
 
   useEffect(() => {
     fetchAds()
@@ -214,6 +239,27 @@ export default function ExplorerSection({ isDark }: ExplorerSectionProps) {
             >
               {performanceCategories.map(c => <option key={c} value={c}>{c === 'All' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mt-4">
+          <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Showing {sortedAds.length} ads
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleExportCSV}
+              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-cyan-600 text-white hover:bg-cyan-700">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export CSV
+            </button>
+            <button
+              onClick={() => setFilters({ batch: 'All', week: 'All', persona: 'All', conceptCode: 'All', performanceCategory: 'All', status: 'All' })}
+              className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              Clear Filters
+            </button>
           </div>
         </div>
       </div>

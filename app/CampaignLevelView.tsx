@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { exportToCSV } from '../lib/csvExport'
 
-// Helper function to safely format numbers
 function safeNumber(value: any, decimals: number = 2): string {
   if (value === undefined || value === null || value === '') {
     return (0).toFixed(decimals)
@@ -28,7 +28,6 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
   const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([])
   
-  // Filters
   const [filters, setFilters] = useState({
     device: 'All',
     country: 'All',
@@ -36,6 +35,33 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
     concept: 'All',
     status: 'All'
   })
+
+  const handleExportCSV = () => {
+    const filename = `campaigns${filters.status !== 'All' ? `_${filters.status}` : ''}`
+    
+    exportToCSV(
+      filteredCampaigns,
+      filename,
+      [
+        { key: 'campaign_name', label: 'Campaign Name' },
+        { key: 'primary_device', label: 'Device' },
+        { key: 'primary_country', label: 'Country' },
+        { key: 'status', label: 'Status' },
+        { key: 'spend_7d', label: 'Spend ($)' },
+        { key: 'spend_change', label: 'Spend Change (%)' },
+        { key: 'revenue_7d', label: 'Revenue ($)' },
+        { key: 'roas_7d', label: 'ROAS' },
+        { key: 'cpm_7d', label: 'CPM ($)' },
+        { key: 'ctr_7d', label: 'CTR' },
+        { key: 'ipm_7d', label: 'IPM' },
+        { key: 'conversions_7d', label: 'Conversions' },
+        { key: 'cpi_7d', label: 'CPI ($)' },
+        { key: 'pp10k_7d', label: 'PP10K' },
+        { key: 'avg_purchase_value_7d', label: 'Avg Purchase ($)' },
+        { key: 'cpp_7d', label: 'CPP ($)' }
+      ]
+    )
+  }
 
   useEffect(() => {
     fetchCampaigns()
@@ -45,7 +71,6 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
     setLoading(true)
     
     try {
-      // Fetch campaigns from campaigns table
       const { data: campaignData, error: campaignError } = await supabase
         .from('campaigns')
         .select('*')
@@ -65,7 +90,6 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
         return
       }
 
-      // Fetch ad sets
       const { data: adsetsData, error: adsetsError } = await supabase
         .from('adsets')
         .select('*')
@@ -98,7 +122,6 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
         setAdsets(enrichedAdSets)
       }
 
-      // Also fetch ads for filtering
       const { data: adData, error: adError } = await supabase
         .from('creative_performance')
         .select('campaign_id, batch, persona, concept_code')
@@ -297,10 +320,19 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
 
         <div className="flex items-center justify-between mt-4">
           <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Showing {sortedCampaigns.length} campaigns</div>
-          <button onClick={() => setFilters({ device: 'All', country: 'All', persona: 'All', concept: 'All', status: 'All' })}
-            className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-            Clear Filters
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleExportCSV}
+              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-cyan-600 text-white hover:bg-cyan-700">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export CSV
+            </button>
+            <button onClick={() => setFilters({ device: 'All', country: 'All', persona: 'All', concept: 'All', status: 'All' })}
+              className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              Clear Filters
+            </button>
+          </div>
         </div>
       </div>
 
@@ -445,67 +477,66 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
                           <span>{campaign.campaign_name || 'Unknown'}</span>
                         </div>
                       </td>
-                  <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <span className={`px-2 py-1 rounded-full text-xs ${campaign.primary_device === 'iOS' ? 'bg-gray-700 text-gray-200' : campaign.primary_device === 'Android' ? 'bg-green-700 text-green-200' : 'bg-blue-700 text-blue-200'}`}>
-                      {campaign.primary_device || 'Unknown'}
-                    </span>
-                  </td>
-                  <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.primary_country || 'Unknown'}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.spend_7d, 0)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${campaign.spend_change > 0 ? 'text-green-600' : campaign.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {campaign.spend_change > 0 ? '+' : ''}{safeNumber(campaign.spend_change, 1)}%
-                  </td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.revenue_7d, 0)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpm_7d, 2)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ctr_7d * 100, 2)}%</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ipm_7d, 1)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.conversions_7d || 0}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpi_7d, 2)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.pp10k_7d, 1)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.avg_purchase_value_7d, 2)}</td>
-                  <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpp_7d, 2)}</td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${campaign.roas_7d >= 2.0 ? 'text-green-600' : campaign.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {safeNumber(campaign.roas_7d, 2)}x
-                  </td>
-                </tr>
+                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs ${campaign.primary_device === 'iOS' ? 'bg-gray-700 text-gray-200' : campaign.primary_device === 'Android' ? 'bg-green-700 text-green-200' : 'bg-blue-700 text-blue-200'}`}>
+                          {campaign.primary_device || 'Unknown'}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.primary_country || 'Unknown'}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.spend_7d, 0)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${campaign.spend_change > 0 ? 'text-green-600' : campaign.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {campaign.spend_change > 0 ? '+' : ''}{safeNumber(campaign.spend_change, 1)}%
+                      </td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.revenue_7d, 0)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpm_7d, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ctr_7d * 100, 2)}%</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ipm_7d, 1)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.conversions_7d || 0}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpi_7d, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.pp10k_7d, 1)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.avg_purchase_value_7d, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpp_7d, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right font-medium ${campaign.roas_7d >= 2.0 ? 'text-green-600' : campaign.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {safeNumber(campaign.roas_7d, 2)}x
+                      </td>
+                    </tr>
 
-                {/* Expanded Ad Sets */}
-                {isExpanded && campaignAdSets.length > 0 && campaignAdSets.map((adset) => (
-                  <tr 
-                    key={adset.id} 
-                    className={`${isDark ? 'bg-gray-900/30 hover:bg-gray-900/50' : 'bg-gray-50/50 hover:bg-gray-100'}`}
-                  >
-                    <td className="px-4 py-2"></td>
-                    <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      <span className="ml-8 text-cyan-600">Ad Set / {adset.adset_name || adset.name || 'Unknown'}</span>
-                    </td>
-                    <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      <span className={`px-2 py-1 rounded-full text-xs ${adset.primary_device === 'iOS' ? 'bg-gray-700 text-gray-200' : adset.primary_device === 'Android' ? 'bg-green-700 text-green-200' : 'bg-blue-700 text-blue-200'}`}>
-                        {adset.primary_device || 'Unknown'}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.primary_country || 'Unknown'}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.spend_7d, 0)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${adset.spend_change > 0 ? 'text-green-600' : adset.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {adset.spend_change > 0 ? '+' : ''}{safeNumber(adset.spend_change, 1)}%
-                    </td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.revenue_7d, 0)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpm_7d, 2)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ctr_7d * 100, 2)}%</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ipm_7d, 1)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.conversions_7d || 0}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpi_7d, 2)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.pp10k_7d, 1)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.avg_purchase_value_7d, 2)}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpp_7d, 2)}</td>
-                    <td className={`px-4 py-2 text-sm text-right font-medium ${adset.roas_7d >= 2.0 ? 'text-green-600' : adset.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {safeNumber(adset.roas_7d, 2)}x
-                    </td>
-                  </tr>
-                ))}
-              </React.Fragment>
-            )
-          })}
+                    {isExpanded && campaignAdSets.length > 0 && campaignAdSets.map((adset) => (
+                      <tr 
+                        key={adset.id} 
+                        className={`${isDark ? 'bg-gray-900/30 hover:bg-gray-900/50' : 'bg-gray-50/50 hover:bg-gray-100'}`}
+                      >
+                        <td className="px-4 py-2"></td>
+                        <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                          <span className="ml-8 text-cyan-600">Ad Set / {adset.adset_name || adset.name || 'Unknown'}</span>
+                        </td>
+                        <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          <span className={`px-2 py-1 rounded-full text-xs ${adset.primary_device === 'iOS' ? 'bg-gray-700 text-gray-200' : adset.primary_device === 'Android' ? 'bg-green-700 text-green-200' : 'bg-blue-700 text-blue-200'}`}>
+                            {adset.primary_device || 'Unknown'}
+                          </span>
+                        </td>
+                        <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.primary_country || 'Unknown'}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.spend_7d, 0)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${adset.spend_change > 0 ? 'text-green-600' : adset.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {adset.spend_change > 0 ? '+' : ''}{safeNumber(adset.spend_change, 1)}%
+                        </td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.revenue_7d, 0)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpm_7d, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ctr_7d * 100, 2)}%</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ipm_7d, 1)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.conversions_7d || 0}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpi_7d, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.pp10k_7d, 1)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.avg_purchase_value_7d, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpp_7d, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right font-medium ${adset.roas_7d >= 2.0 ? 'text-green-600' : adset.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {safeNumber(adset.roas_7d, 2)}x
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { exportToCSV } from '../lib/csvExport'
 
 function safeNumber(value: any, decimals: number = 2): string {
   if (value === undefined || value === null || value === '') {
@@ -44,6 +45,35 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     minSpend: 0
   })
 
+  // CSV Export Function
+  const handleExportCSV = () => {
+    const personaLabel = filters.persona.length > 0 ? filters.persona.join('_') : 'all'
+    const conceptLabel = filters.concept.length > 0 ? filters.concept.join('_') : 'all'
+    const filename = `persona_report_${personaLabel}_${conceptLabel}`
+    
+    exportToCSV(
+      filteredData,
+      filename,
+      [
+        { key: 'week', label: 'Week' },
+        { key: 'campaign_name', label: 'Campaign' },
+        { key: 'ad_name', label: 'Ad Name' },
+        { key: 'persona', label: 'Persona' },
+        { key: 'concept_code', label: 'Concept' },
+        { key: 'spend', label: 'Spend ($)' },
+        { key: 'revenue', label: 'Revenue ($)' },
+        { key: 'roas', label: 'ROAS' },
+        { key: 'purchases', label: 'Purchases' },
+        { key: 'cost_per_purchase', label: 'CPP ($)' },
+        { key: 'impressions', label: 'Impressions' },
+        { key: 'link_clicks', label: 'Link Clicks' },
+        { key: 'ctr', label: 'CTR' },
+        { key: 'cpm', label: 'CPM ($)' },
+        { key: 'frequency', label: 'Frequency' }
+      ]
+    )
+  }
+
   useEffect(() => {
     fetchData()
   }, [])
@@ -79,20 +109,20 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         return
       }
 
-      console.log('📊 Total rows fetched:', reportData?.length)
-      console.log('📊 Sample row:', reportData?.[0])
-      console.log('📊 Available columns:', Object.keys(reportData?.[0] || {}))
-      console.log('📊 Checking for pre-existing columns:')
+      console.log(' Total rows fetched:', reportData?.length)
+      console.log(' Sample row:', reportData?.[0])
+      console.log(' Available columns:', Object.keys(reportData?.[0] || {}))
+      console.log(' Checking for pre-existing columns:')
       console.log('   - Persona column exists:', 'Persona' in (reportData?.[0] || {}))
       console.log('   - Concept column exists:', 'Concept' in (reportData?.[0] || {}))
       console.log('   - Week column exists:', 'Week' in (reportData?.[0] || {}))
-      console.log('📊 Sample values:')
+      console.log(' Sample values:')
       console.log('   - Persona:', reportData?.[0]?.['Persona'])
       console.log('   - Concept:', reportData?.[0]?.['Concept'])
       console.log('   - Week:', reportData?.[0]?.['Week'])
       
       // Log first 5 ad names to see the pattern
-      console.log('📊 Sample ad names (first 5):')
+      console.log(' Sample ad names (first 5):')
       reportData?.slice(0, 5).forEach((row: any, idx: number) => {
         const adName = row['Ad name'] || ''
         const parts = adName.split('-')
@@ -149,16 +179,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         }
       })
 
-      console.log('📊 Enriched with persona/concept:', enrichedData[0])
-      console.log('📊 Sample persona:', enrichedData[0]?.persona)
-      console.log('📊 Sample concept:', enrichedData[0]?.concept_code)
-      console.log('📊 Sample week:', enrichedData[0]?.week)
+      console.log(' Enriched with persona/concept:', enrichedData[0])
+      console.log(' Sample persona:', enrichedData[0]?.persona)
+      console.log(' Sample concept:', enrichedData[0]?.concept_code)
+      console.log(' Sample week:', enrichedData[0]?.week)
       
       // Find and log any 3040 rows to verify they exist
       const sample3040 = enrichedData.filter(d => d.persona === '3040').slice(0, 3)
-      console.log('📊 Sample 3040 rows found:', sample3040.length)
+      console.log(' Sample 3040 rows found:', sample3040.length)
       if (sample3040.length > 0) {
-        console.log('📊 First 3040 row:', {
+        console.log(' First 3040 row:', {
           persona: sample3040[0].persona,
           spend: sample3040[0].spend,
           week: sample3040[0].week,
@@ -196,16 +226,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   // Debug logging when persona filter is active
   if (filters.persona.length > 0) {
-    console.log('🔍 Persona Filter Active:', filters.persona)
-    console.log('📊 Total data rows:', data.length)
-    console.log('📊 Filtered data rows:', filteredData.length)
-    console.log('📊 Sample filtered personas:', filteredData.slice(0, 5).map(d => d.persona))
-    console.log('📊 All unique personas in data:', [...new Set(data.map(d => d.persona))].sort())
+    console.log(' Persona Filter Active:', filters.persona)
+    console.log(' Total data rows:', data.length)
+    console.log('Filtered data rows:', filteredData.length)
+    console.log('Sample filtered personas:', filteredData.slice(0, 5).map(d => d.persona))
+    console.log(' All unique personas in data:', [...new Set(data.map(d => d.persona))].sort())
     
     // Check if the filtered persona exists in the data
     filters.persona.forEach(p => {
       const matchingRows = data.filter(d => d.persona === p)
-      console.log(`📊 Rows matching "${p}":`, matchingRows.length)
+      console.log(` Rows matching "${p}":`, matchingRows.length)
       if (matchingRows.length > 0) {
         console.log(`   Sample ad name:`, matchingRows[0].ad_name)
         console.log(`   Extracted persona:`, matchingRows[0].persona)
@@ -253,7 +283,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       
       // Debug log for first few rows when 3040 is filtered
       if (filters.persona.includes('3040') && Object.keys(acc).length < 3) {
-        console.log('📊 [Reduce] Processing row:', {
+        console.log(' [Reduce] Processing row:', {
           week,
           persona,
           spend: row.spend,
@@ -277,7 +307,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         acc[week][`${persona}_revenue`] = 0
         
         if (filters.persona.includes('3040') && persona === '3040') {
-          console.log(`📊 [Reduce] Created new key "${spendKey}" for week "${week}"`)
+          console.log(` [Reduce] Created new key "${spendKey}" for week "${week}"`)
         }
       }
       
@@ -286,7 +316,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       acc[week].total_revenue += row.revenue || 0
       
       if (filters.persona.includes('3040') && persona === '3040' && Object.keys(acc).length === 1) {
-        console.log(`📊 [Reduce] After adding: ${spendKey} = ${acc[week][spendKey]}`)
+        console.log(` [Reduce] After adding: ${spendKey} = ${acc[week][spendKey]}`)
       }
       
       return acc
@@ -301,10 +331,10 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     
     // Debug: log what keys exist in data before mapping (first week only)
     if (filters.persona.includes('3040') && index === 0) {
-      console.log(`📊 [Map] First week "${week}" data keys:`, Object.keys(data))
-      console.log(`📊 [Map] Has 3040_spend:`, '3040_spend' in data)
-      console.log(`📊 [Map] 3040_spend value from reduce:`, data['3040_spend'])
-      console.log(`📊 [Map] Filtered personas to iterate:`, filteredPersonas)
+      console.log(` [Map] First week "${week}" data keys:`, Object.keys(data))
+      console.log(` [Map] Has 3040_spend:`, '3040_spend' in data)
+      console.log(` [Map] 3040_spend value from reduce:`, data['3040_spend'])
+      console.log(` [Map] Filtered personas to iterate:`, filteredPersonas)
     }
     
     // IMPORTANT: Only iterate through personas in FILTERED data, not ALL personas!
@@ -319,8 +349,8 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       
       // Debug: log when we're adding 3040 keys (first week only)
       if (filters.persona.includes('3040') && persona === '3040' && index === 0) {
-        console.log(`📊 [Map] Adding key "${spendKey}" with value:`, result[spendKey])
-        console.log(`📊 [Map] Source value from data[${spendKey}]:`, data[spendKey])
+        console.log(` [Map] Adding key "${spendKey}" with value:`, result[spendKey])
+        console.log(` [Map] Source value from data[${spendKey}]:`, data[spendKey])
       }
     })
     
@@ -329,18 +359,18 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   // Debug weekly trend when persona filter is active
   if (filters.persona.length > 0) {
-    console.log('📊 === DEBUGGING 3040 PERSONA ===')
-    console.log('📊 Filtered Data Length:', filteredData.length)
-    console.log('📊 Sample Filtered Rows:', filteredData.slice(0, 3).map(d => ({
+    console.log('=== DEBUGGING 3040 PERSONA ===')
+    console.log('Filtered Data Length:', filteredData.length)
+    console.log('Sample Filtered Rows:', filteredData.slice(0, 3).map(d => ({
       persona: d.persona,
       spend: d.spend,
       week: d.week,
       ad_name: d.ad_name?.substring(0, 40)
     })))
-    console.log('📊 Weekly Trend Length:', weeklyTrend.length)
-    console.log('📊 Weekly Trend Data (ALL weeks):', weeklyTrend)
-    console.log('📊 Persona Aggregated:', personaAggregated)
-    console.log('📊 Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
+    console.log('Weekly Trend Length:', weeklyTrend.length)
+    console.log('Weekly Trend Data (ALL weeks):', weeklyTrend)
+    console.log('Persona Aggregated:', personaAggregated)
+    console.log('Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
       persona: p.persona,
       spend: p.spend,
       dataKey: `${p.persona}_spend`
@@ -350,7 +380,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     if (weeklyTrend.length > 0 && personaAggregated.length > 0) {
       const firstPersona = personaAggregated[0].persona
       const dataKey = `${firstPersona}_spend`
-      console.log('📊 Checking if dataKey exists in weeklyTrend:')
+      console.log('Checking if dataKey exists in weeklyTrend:')
       console.log(`   DataKey: "${dataKey}"`)
       console.log(`   First week has this key:`, weeklyTrend[0].hasOwnProperty(dataKey))
       console.log(`   First week value:`, weeklyTrend[0][dataKey])
@@ -358,9 +388,9 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       
       // IMPORTANT: Check ALL weeks for this key
       const weeksWithData = weeklyTrend.filter(w => w[dataKey] && w[dataKey] > 0)
-      console.log(`📊 Weeks with ${dataKey} > 0:`, weeksWithData.length, '/', weeklyTrend.length)
+      console.log(`Weeks with ${dataKey} > 0:`, weeksWithData.length, '/', weeklyTrend.length)
       if (weeksWithData.length > 0) {
-        console.log(`📊 Sample weeks with data:`, weeksWithData.slice(0, 3).map(w => ({
+        console.log(`ample weeks with data:`, weeksWithData.slice(0, 3).map(w => ({
           week: w.week,
           spend: w[dataKey]
         })))
@@ -369,7 +399,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       // Check scale issue
       const maxSpend = Math.max(...weeklyTrend.map(w => w[dataKey] || 0))
       const maxRevenue = Math.max(...weeklyTrend.map(w => w.total_revenue || 0))
-      console.log('📊 SCALE ANALYSIS:')
+      console.log('SCALE ANALYSIS:')
       console.log(`   Max weekly spend: $${maxSpend}`)
       console.log(`   Max weekly revenue: $${maxRevenue}`)
       console.log(`   Ratio: ${maxRevenue > 0 ? (maxSpend / maxRevenue * 100).toFixed(2) : 0}% (spend vs revenue)`)
@@ -517,10 +547,19 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             {filters.persona.length > 0 && <span className="ml-2 text-cyan-600">• {filters.persona.length} persona(s) filtered</span>}
             {filters.concept.length > 0 && <span className="ml-2 text-cyan-600">• {filters.concept.length} concept(s) filtered</span>}
           </div>
-          <button onClick={() => setFilters({ persona: [], concept: [], campaign: 'All', minSpend: 0 })}
-            className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-            Clear Filters
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleExportCSV}
+              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-cyan-600 text-white hover:bg-cyan-700">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Export CSV
+            </button>
+            <button onClick={() => setFilters({ persona: [], concept: [], campaign: 'All', minSpend: 0 })}
+              className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              Clear Filters
+            </button>
+          </div>
         </div>
       </div>
 
@@ -675,7 +714,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
               
               // Debug log for each line being created
               if (filters.persona.length > 0) {
-                console.log(`📊 Creating Line for persona "${persona}":`, {
+                console.log(`Creating Line for persona "${persona}":`, {
                   dataKey,
                   color,
                   totalSpend: personaTotal,

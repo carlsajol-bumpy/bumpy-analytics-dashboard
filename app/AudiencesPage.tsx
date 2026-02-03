@@ -1,10 +1,29 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { exportToCSV } from '../lib/csvExport'
 
 export default function AudiencesPage({ isDark }: { isDark?: boolean }) {
   const [audiences, setAudiences] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  // CSV Export Function
+  const handleExportCSV = () => {
+    exportToCSV(
+      audiences,
+      'audiences_by_persona',
+      [
+        { key: 'persona', label: 'Persona' },
+        { key: 'ads', label: 'Number of Ads' },
+        { key: 'spend', label: 'Spend ($)' },
+        { key: 'impressions', label: 'Impressions' },
+        { key: 'clicks', label: 'Clicks' },
+        { key: 'ctr', label: 'CTR (%)' },
+        { key: 'conversions', label: 'Conversions' },
+        { key: 'conversionRate', label: 'Conversion Rate (%)' },
+        { key: 'avgRoas', label: 'Avg ROAS' }
+      ]
+    )
+  }
 
   useEffect(() => {
     fetchAudiences()
@@ -106,10 +125,19 @@ export default function AudiencesPage({ isDark }: { isDark?: boolean }) {
             </div>
           </div>
 
-          {/* Personas Table */}
+           {/* Personas Table */}
           <div className={`rounded-xl shadow-sm border overflow-hidden ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className={`p-6 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-              <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Performance by Persona</h3>
+              <div className="flex items-center justify-between">
+                <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Performance by Persona</h3>
+                <button onClick={handleExportCSV}
+                  className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-cyan-600 text-white hover:bg-cyan-700">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export CSV
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
