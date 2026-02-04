@@ -19,25 +19,33 @@ interface CampaignLevelViewProps {
   isDark?: boolean
 }
 
+// Column mapping for different timeframes
+const TIMEFRAME_COLUMNS: Record<string, string> = {
+  '7d': '_7d',      // Uses spend_7d, revenue_7d, etc.
+  '14d': '_prev',   // Uses spend_prev, revenue_prev, etc. (14d data is in prev columns)
+  '28d': '_28d',    // Uses spend_28d, revenue_28d, etc.
+  '30d': '_30d'     // Uses spend_30d, revenue_30d, etc.
+}
+
 export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   const [campaigns, setCampaigns] = useState<any[]>([])
   const [adsets, setAdsets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [sortField, setSortField] = useState('spend_7d')
+  const [sortField, setSortField] = useState('spend')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
   const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([])
   
   const [filters, setFilters] = useState({
+    timeframe: '7d',
     device: 'All',
     country: 'All',
-    persona: 'All',
-    concept: 'All',
     status: 'All'
   })
 
   const handleExportCSV = () => {
-    const filename = `campaigns${filters.status !== 'All' ? `_${filters.status}` : ''}`
+    const timeframeLabel = filters.timeframe
+    const filename = `campaigns_${timeframeLabel}${filters.status !== 'All' ? `_${filters.status}` : ''}`
     
     exportToCSV(
       filteredCampaigns,
@@ -47,18 +55,18 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
         { key: 'primary_device', label: 'Device' },
         { key: 'primary_country', label: 'Country' },
         { key: 'status', label: 'Status' },
-        { key: 'spend_7d', label: 'Spend ($)' },
+        { key: 'spend', label: `Spend ${timeframeLabel} ($)` },
         { key: 'spend_change', label: 'Spend Change (%)' },
-        { key: 'revenue_7d', label: 'Revenue ($)' },
-        { key: 'roas_7d', label: 'ROAS' },
-        { key: 'cpm_7d', label: 'CPM ($)' },
-        { key: 'ctr_7d', label: 'CTR' },
-        { key: 'ipm_7d', label: 'IPM' },
-        { key: 'conversions_7d', label: 'Conversions' },
-        { key: 'cpi_7d', label: 'CPI ($)' },
-        { key: 'pp10k_7d', label: 'PP10K' },
-        { key: 'avg_purchase_value_7d', label: 'Avg Purchase ($)' },
-        { key: 'cpp_7d', label: 'CPP ($)' }
+        { key: 'revenue', label: `Revenue ${timeframeLabel} ($)` },
+        { key: 'roas', label: `ROAS ${timeframeLabel}` },
+        { key: 'cpm', label: `CPM ${timeframeLabel} ($)` },
+        { key: 'ctr', label: `CTR ${timeframeLabel}` },
+        { key: 'ipm', label: `IPM ${timeframeLabel}` },
+        { key: 'conversions', label: `Conversions ${timeframeLabel}` },
+        { key: 'cpi', label: `CPI ${timeframeLabel} ($)` },
+        { key: 'pp10k', label: `PP10K ${timeframeLabel}` },
+        { key: 'avg_purchase_value', label: `Avg Purchase ${timeframeLabel} ($)` },
+        { key: 'cpp', label: `CPP ${timeframeLabel} ($)` }
       ]
     )
   }
@@ -66,6 +74,9 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   useEffect(() => {
     fetchCampaigns()
   }, [])
+
+  // Get column suffix for current timeframe
+  const getColumnSuffix = () => TIMEFRAME_COLUMNS[filters.timeframe]
 
   async function fetchCampaigns() {
     setLoading(true)
@@ -98,33 +109,50 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
       if (adsetsError) {
         console.error('Error fetching ad sets:', adsetsError)
       } else {
+        // Enrich ad sets with all timeframe data
         const enrichedAdSets = (adsetsData || []).map((adset: any) => {
-          const spend_7d = parseFloat(adset.spend_7d || 0)
-          const revenue_7d = parseFloat(adset.revenue_7d || 0)
-          const impressions_7d = parseInt(adset.impressions_7d || 0)
-          const clicks_7d = parseInt(adset.clicks_7d || 0)
-          const conversions_7d = parseInt(adset.conversions_7d || 0)
-          const spend_prev = parseFloat(adset.spend_prev || 0)
+          const enriched: any = { ...adset }
           
-          return {
-            ...adset,
-            roas_7d: spend_7d > 0 ? revenue_7d / spend_7d : 0,
-            cpm_7d: impressions_7d > 0 ? (spend_7d / impressions_7d) * 1000 : 0,
-            ctr_7d: impressions_7d > 0 ? (clicks_7d / impressions_7d) : 0,
-            ipm_7d: impressions_7d / 1000,
-            cpi_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-            pp10k_7d: impressions_7d > 0 ? (conversions_7d / impressions_7d) * 10000 : 0,
-            avg_purchase_value_7d: conversions_7d > 0 ? revenue_7d / conversions_7d : 0,
-            cpp_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-            spend_change: spend_prev > 0 ? ((spend_7d - spend_prev) / spend_prev) * 100 : 0,
-          }
+          // Calculate metrics for each timeframe
+          const timeframeMappings = [
+            { label: '7d', suffix: '_7d' },
+            { label: '14d', suffix: '_prev' },
+            { label: '28d', suffix: '_28d' },
+            { label: '30d', suffix: '_30d' }
+          ]
+          
+          timeframeMappings.forEach(({ label, suffix }) => {
+            const spend = parseFloat(adset[`spend${suffix}`] || 0)
+            const revenue = parseFloat(adset[`revenue${suffix}`] || 0)
+            const impressions = parseInt(adset[`impressions${suffix}`] || 0)
+            const clicks = parseInt(adset[`clicks${suffix}`] || 0)
+            const conversions = parseInt(adset[`conversions${suffix}`] || 0)
+            
+            enriched[`spend${suffix}`] = spend
+            enriched[`revenue${suffix}`] = revenue
+            enriched[`roas${suffix}`] = spend > 0 ? revenue / spend : 0
+            enriched[`cpm${suffix}`] = impressions > 0 ? (spend / impressions) * 1000 : 0
+            enriched[`ctr${suffix}`] = impressions > 0 ? (clicks / impressions) : 0
+            enriched[`ipm${suffix}`] = impressions / 1000
+            enriched[`cpi${suffix}`] = conversions > 0 ? spend / conversions : 0
+            enriched[`pp10k${suffix}`] = impressions > 0 ? (conversions / impressions) * 10000 : 0
+            enriched[`avg_purchase_value${suffix}`] = conversions > 0 ? revenue / conversions : 0
+            enriched[`cpp${suffix}`] = conversions > 0 ? spend / conversions : 0
+          })
+          
+          // Calculate spend change (comparing 7d to prev)
+          const spend_7d = parseFloat(adset.spend_7d || 0)
+          const spend_prev = parseFloat(adset.spend_prev || 0)
+          enriched.spend_change = spend_prev > 0 ? ((spend_7d - spend_prev) / spend_prev) * 100 : 0
+          
+          return enriched
         })
         setAdsets(enrichedAdSets)
       }
 
       const { data: adData, error: adError } = await supabase
         .from('creative_performance')
-        .select('campaign_id, batch, persona, concept_code')
+        .select('campaign_id, batch')
         .limit(10000)
 
       const adsByCampaign: any = {}
@@ -136,29 +164,46 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
         adsByCampaign[campaignId].push(ad)
       })
 
+      // Enrich campaigns with all timeframe data
       const enrichedCampaigns = campaignData.map((campaign: any) => {
-        const spend_7d = parseFloat(campaign.spend_7d || 0)
-        const revenue_7d = parseFloat(campaign.revenue_7d || 0)
-        const impressions_7d = parseInt(campaign.impressions_7d || 0)
-        const clicks_7d = parseInt(campaign.clicks_7d || 0)
-        const conversions_7d = parseInt(campaign.conversions_7d || 0)
-        const spend_prev = parseFloat(campaign.spend_prev || 0)
-        const revenue_prev = parseFloat(campaign.revenue_prev || 0)
+        const enriched: any = { ...campaign, ads: adsByCampaign[campaign.campaign_id || campaign.id] || [] }
         
-        return {
-          ...campaign,
-          ads: adsByCampaign[campaign.campaign_id || campaign.id] || [],
-          roas_7d: spend_7d > 0 ? revenue_7d / spend_7d : 0,
-          cpm_7d: impressions_7d > 0 ? (spend_7d / impressions_7d) * 1000 : 0,
-          ctr_7d: impressions_7d > 0 ? (clicks_7d / impressions_7d) : 0,
-          ipm_7d: impressions_7d / 1000,
-          cpi_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-          pp10k_7d: impressions_7d > 0 ? (conversions_7d / impressions_7d) * 10000 : 0,
-          avg_purchase_value_7d: conversions_7d > 0 ? revenue_7d / conversions_7d : 0,
-          cpp_7d: conversions_7d > 0 ? spend_7d / conversions_7d : 0,
-          spend_change: spend_prev > 0 ? ((spend_7d - spend_prev) / spend_prev) * 100 : 0,
-          roas_prev: spend_prev > 0 ? revenue_prev / spend_prev : 0
-        }
+        // Calculate metrics for each timeframe
+        const timeframeMappings = [
+          { label: '7d', suffix: '_7d' },
+          { label: '14d', suffix: '_prev' },
+          { label: '28d', suffix: '_28d' },
+          { label: '30d', suffix: '_30d' }
+        ]
+        
+        timeframeMappings.forEach(({ label, suffix }) => {
+          const spend = parseFloat(campaign[`spend${suffix}`] || 0)
+          const revenue = parseFloat(campaign[`revenue${suffix}`] || 0)
+          const impressions = parseInt(campaign[`impressions${suffix}`] || 0)
+          const clicks = parseInt(campaign[`clicks${suffix}`] || 0)
+          const conversions = parseInt(campaign[`conversions${suffix}`] || 0)
+          
+          enriched[`spend${suffix}`] = spend
+          enriched[`revenue${suffix}`] = revenue
+          enriched[`roas${suffix}`] = spend > 0 ? revenue / spend : 0
+          enriched[`cpm${suffix}`] = impressions > 0 ? (spend / impressions) * 1000 : 0
+          enriched[`ctr${suffix}`] = impressions > 0 ? (clicks / impressions) : 0
+          enriched[`ipm${suffix}`] = impressions / 1000
+          enriched[`cpi${suffix}`] = conversions > 0 ? spend / conversions : 0
+          enriched[`pp10k${suffix}`] = impressions > 0 ? (conversions / impressions) * 10000 : 0
+          enriched[`avg_purchase_value${suffix}`] = conversions > 0 ? revenue / conversions : 0
+          enriched[`cpp${suffix}`] = conversions > 0 ? spend / conversions : 0
+          enriched[`impressions${suffix}`] = impressions
+          enriched[`clicks${suffix}`] = clicks
+          enriched[`conversions${suffix}`] = conversions
+        })
+        
+        // Calculate spend change (comparing 7d to prev)
+        const spend_7d = parseFloat(campaign.spend_7d || 0)
+        const spend_prev = parseFloat(campaign.spend_prev || 0)
+        enriched.spend_change = spend_prev > 0 ? ((spend_7d - spend_prev) / spend_prev) * 100 : 0
+        
+        return enriched
       })
 
       setCampaigns(enrichedCampaigns)
@@ -178,20 +223,34 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
     }
   }
 
-  const filteredCampaigns = campaigns.filter(campaign => {
-    if (filters.device !== 'All' && campaign.primary_device !== filters.device) return false
-    if (filters.country !== 'All' && campaign.primary_country !== filters.country) return false
-    if (filters.persona !== 'All') {
-      const hasPersona = campaign.ads?.some((ad: any) => ad.persona === filters.persona)
-      if (!hasPersona) return false
-    }
-    if (filters.concept !== 'All') {
-      const hasConcept = campaign.ads?.some((ad: any) => ad.concept_code === filters.concept)
-      if (!hasConcept) return false
-    }
-    if (filters.status !== 'All' && campaign.status !== filters.status) return false
-    return true
-  })
+  // Filter and map to current timeframe
+  const filteredCampaigns = campaigns
+    .filter(campaign => {
+      if (filters.device !== 'All' && campaign.primary_device !== filters.device) return false
+      if (filters.country !== 'All' && campaign.primary_country !== filters.country) return false
+      if (filters.status !== 'All' && campaign.status !== filters.status) return false
+      return true
+    })
+    .map(campaign => {
+      // Add current timeframe data for easier access
+      const suffix = getColumnSuffix()
+      return {
+        ...campaign,
+        spend: campaign[`spend${suffix}`],
+        revenue: campaign[`revenue${suffix}`],
+        roas: campaign[`roas${suffix}`],
+        impressions: campaign[`impressions${suffix}`],
+        clicks: campaign[`clicks${suffix}`],
+        conversions: campaign[`conversions${suffix}`],
+        cpm: campaign[`cpm${suffix}`],
+        ctr: campaign[`ctr${suffix}`],
+        ipm: campaign[`ipm${suffix}`],
+        cpi: campaign[`cpi${suffix}`],
+        pp10k: campaign[`pp10k${suffix}`],
+        avg_purchase_value: campaign[`avg_purchase_value${suffix}`],
+        cpp: campaign[`cpp${suffix}`]
+      }
+    })
 
   const sortedCampaigns = [...filteredCampaigns].sort((a, b) => {
     const aVal = a[sortField]
@@ -205,11 +264,11 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   })
 
   const totals = filteredCampaigns.reduce((acc, c) => {
-    acc.spend += c.spend_7d || 0
-    acc.revenue += c.revenue_7d || 0
-    acc.impressions += c.impressions_7d || 0
-    acc.clicks += c.clicks_7d || 0
-    acc.conversions += c.conversions_7d || 0
+    acc.spend += c.spend || 0
+    acc.revenue += c.revenue || 0
+    acc.impressions += c.impressions || 0
+    acc.clicks += c.clicks || 0
+    acc.conversions += c.conversions || 0
     return acc
   }, { spend: 0, revenue: 0, impressions: 0, clicks: 0, conversions: 0 })
 
@@ -220,11 +279,8 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   const overallCpi = totals.conversions > 0 ? totals.spend / totals.conversions : 0
   const overallPp10k = totals.impressions > 0 ? (totals.conversions / totals.impressions) * 10000 : 0
 
-  const allAds = campaigns.flatMap(c => c.ads || [])
   const deviceOptions = ['All', ...new Set(campaigns.map((c: any) => c.primary_device).filter(Boolean))].sort()
   const countryOptions = ['All', ...new Set(campaigns.map((c: any) => c.primary_country).filter(Boolean))].sort()
-  const personaOptions = ['All', ...new Set(allAds.map((ad: any) => ad.persona).filter(Boolean))].sort()
-  const conceptOptions = ['All', ...new Set(allAds.map((ad: any) => ad.concept_code).filter(Boolean))].sort()
   const statusOptions = ['All', 'ACTIVE', 'PAUSED']
 
   const toggleCampaignExpansion = (campaignId: string) => {
@@ -246,8 +302,39 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
   }
 
   const getCampaignAdSets = (campaignId: string) => {
-    return adsets.filter(adset => adset.campaign_id === campaignId)
+    const suffix = getColumnSuffix()
+    return adsets
+      .filter(adset => adset.campaign_id === campaignId)
+      .map(adset => ({
+        ...adset,
+        spend: adset[`spend${suffix}`],
+        revenue: adset[`revenue${suffix}`],
+        roas: adset[`roas${suffix}`],
+        impressions: adset[`impressions${suffix}`],
+        clicks: adset[`clicks${suffix}`],
+        conversions: adset[`conversions${suffix}`],
+        cpm: adset[`cpm${suffix}`],
+        ctr: adset[`ctr${suffix}`],
+        ipm: adset[`ipm${suffix}`],
+        cpi: adset[`cpi${suffix}`],
+        pp10k: adset[`pp10k${suffix}`],
+        avg_purchase_value: adset[`avg_purchase_value${suffix}`],
+        cpp: adset[`cpp${suffix}`]
+      }))
   }
+
+  // Get previous week data for comparison
+  const getPreviousWeekTotals = () => {
+    return filteredCampaigns.reduce((acc, c) => {
+      acc.spend += c.spend_prev || 0
+      acc.revenue += c.revenue_prev || 0
+      acc.conversions += c.conversions_prev || 0
+      return acc
+    }, { spend: 0, revenue: 0, conversions: 0 })
+  }
+
+  const prevWeekTotals = getPreviousWeekTotals()
+  const prevWeekRoas = prevWeekTotals.spend > 0 ? prevWeekTotals.revenue / prevWeekTotals.spend : 0
 
   const SortIcon = ({ field }: { field: string }) => (
     <svg 
@@ -280,7 +367,21 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
           <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Filters</h3>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-4 gap-4">
+          <div>
+            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Timeframe</label>
+            <select
+              value={filters.timeframe}
+              onChange={(e) => setFilters({...filters, timeframe: e.target.value})}
+              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+            >
+              <option value="7d">Last 7 Days</option>
+              <option value="14d">Last 14 Days</option>
+              <option value="28d">Last 28 Days</option>
+              <option value="30d">Last 30 Days</option>
+            </select>
+          </div>
+
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>OS / Device</label>
             <select value={filters.device} onChange={(e) => setFilters({...filters, device: e.target.value})}
@@ -288,6 +389,7 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
               {deviceOptions.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
+          
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Country / Region</label>
             <select value={filters.country} onChange={(e) => setFilters({...filters, country: e.target.value})}
@@ -295,20 +397,7 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
               {countryOptions.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Persona</label>
-            <select value={filters.persona} onChange={(e) => setFilters({...filters, persona: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {personaOptions.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Concept</label>
-            <select value={filters.concept} onChange={(e) => setFilters({...filters, concept: e.target.value})}
-              className={`w-full px-3 py-2 text-sm rounded-lg border ${isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}>
-              {conceptOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+
           <div>
             <label className={`block text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Status</label>
             <select value={filters.status} onChange={(e) => setFilters({...filters, status: e.target.value})}
@@ -319,7 +408,9 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
         </div>
 
         <div className="flex items-center justify-between mt-4">
-          <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Showing {sortedCampaigns.length} campaigns</div>
+          <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            Showing {sortedCampaigns.length} campaigns ({filters.timeframe})
+          </div>
           <div className="flex gap-2">
             <button onClick={handleExportCSV}
               className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-cyan-600 text-white hover:bg-cyan-700">
@@ -328,7 +419,7 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
               </svg>
               Export CSV
             </button>
-            <button onClick={() => setFilters({ device: 'All', country: 'All', persona: 'All', concept: 'All', status: 'All' })}
+            <button onClick={() => setFilters({ timeframe: '7d', device: 'All', country: 'All', status: 'All' })}
               className={`px-4 py-2 text-sm rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
               Clear Filters
             </button>
@@ -378,10 +469,10 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
           <h3 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Performance: Current vs Previous Week</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={[
-              { metric: 'Spend', 'Current Week': totals.spend, 'Previous Week': filteredCampaigns.reduce((s, c) => s + (parseFloat(c.spend_prev) || 0), 0) },
-              { metric: 'Revenue', 'Current Week': totals.revenue, 'Previous Week': filteredCampaigns.reduce((s, c) => s + (parseFloat(c.revenue_prev) || 0), 0) },
-              { metric: 'Conversions', 'Current Week': totals.conversions, 'Previous Week': filteredCampaigns.reduce((s, c) => s + (parseInt(c.conversions_prev) || 0), 0) },
-              { metric: 'ROAS', 'Current Week': overallRoas, 'Previous Week': filteredCampaigns.reduce((s, c) => s + (c.roas_prev || 0), 0) / (filteredCampaigns.length || 1) }
+              { metric: 'Spend', 'Current Week': totals.spend, 'Previous Week': prevWeekTotals.spend },
+              { metric: 'Revenue', 'Current Week': totals.revenue, 'Previous Week': prevWeekTotals.revenue },
+              { metric: 'Conversions', 'Current Week': totals.conversions, 'Previous Week': prevWeekTotals.conversions },
+              { metric: 'ROAS', 'Current Week': overallRoas, 'Previous Week': prevWeekRoas }
             ]}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
               <XAxis dataKey="metric" stroke={isDark ? '#9CA3AF' : '#6B7280'} />
@@ -399,7 +490,7 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie 
-                data={sortedCampaigns.slice(0, 5).map(c => ({ name: (c.campaign_name || 'Unknown').substring(0, 20), value: c.spend_7d || 0 }))}
+                data={sortedCampaigns.slice(0, 5).map(c => ({ name: (c.campaign_name || 'Unknown').substring(0, 20), value: c.spend || 0 }))}
                 cx="50%" 
                 cy="50%" 
                 labelLine={false} 
@@ -427,18 +518,18 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
                 <th onClick={() => handleSort('campaign_name')} className={`px-4 py-3 text-left text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Campaign <SortIcon field="campaign_name" /></th>
                 <th onClick={() => handleSort('primary_device')} className={`px-4 py-3 text-left text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Device <SortIcon field="primary_device" /></th>
                 <th onClick={() => handleSort('primary_country')} className={`px-4 py-3 text-left text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Country <SortIcon field="primary_country" /></th>
-                <th onClick={() => handleSort('spend_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend <SortIcon field="spend_7d" /></th>
+                <th onClick={() => handleSort('spend')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend ({filters.timeframe}) <SortIcon field="spend" /></th>
                 <th onClick={() => handleSort('spend_change')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Change <SortIcon field="spend_change" /></th>
-                <th onClick={() => handleSort('revenue_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue <SortIcon field="revenue_7d" /></th>
-                <th onClick={() => handleSort('cpm_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPM <SortIcon field="cpm_7d" /></th>
-                <th onClick={() => handleSort('ctr_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR <SortIcon field="ctr_7d" /></th>
-                <th onClick={() => handleSort('ipm_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>IPM <SortIcon field="ipm_7d" /></th>
-                <th onClick={() => handleSort('conversions_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Conversions <SortIcon field="conversions_7d" /></th>
-                <th onClick={() => handleSort('cpi_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPI <SortIcon field="cpi_7d" /></th>
-                <th onClick={() => handleSort('pp10k_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>PP10K <SortIcon field="pp10k_7d" /></th>
-                <th onClick={() => handleSort('avg_purchase_value_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Avg Purchase <SortIcon field="avg_purchase_value_7d" /></th>
-                <th onClick={() => handleSort('cpp_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPP <SortIcon field="cpp_7d" /></th>
-                <th onClick={() => handleSort('roas_7d')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS <SortIcon field="roas_7d" /></th>
+                <th onClick={() => handleSort('revenue')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue <SortIcon field="revenue" /></th>
+                <th onClick={() => handleSort('cpm')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPM <SortIcon field="cpm" /></th>
+                <th onClick={() => handleSort('ctr')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR <SortIcon field="ctr" /></th>
+                <th onClick={() => handleSort('ipm')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>IPM <SortIcon field="ipm" /></th>
+                <th onClick={() => handleSort('conversions')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Conversions <SortIcon field="conversions" /></th>
+                <th onClick={() => handleSort('cpi')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPI <SortIcon field="cpi" /></th>
+                <th onClick={() => handleSort('pp10k')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>PP10K <SortIcon field="pp10k" /></th>
+                <th onClick={() => handleSort('avg_purchase_value')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Avg Purchase <SortIcon field="avg_purchase_value" /></th>
+                <th onClick={() => handleSort('cpp')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPP <SortIcon field="cpp" /></th>
+                <th onClick={() => handleSort('roas')} className={`px-4 py-3 text-right text-xs font-medium uppercase cursor-pointer ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS <SortIcon field="roas" /></th>
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
@@ -483,21 +574,21 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
                         </span>
                       </td>
                       <td className={`px-4 py-3 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.primary_country || 'Unknown'}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.spend_7d, 0)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.spend, 0)}</td>
                       <td className={`px-4 py-3 text-sm text-right ${campaign.spend_change > 0 ? 'text-green-600' : campaign.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         {campaign.spend_change > 0 ? '+' : ''}{safeNumber(campaign.spend_change, 1)}%
                       </td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.revenue_7d, 0)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpm_7d, 2)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ctr_7d * 100, 2)}%</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ipm_7d, 1)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.conversions_7d || 0}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpi_7d, 2)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.pp10k_7d, 1)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.avg_purchase_value_7d, 2)}</td>
-                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpp_7d, 2)}</td>
-                      <td className={`px-4 py-3 text-sm text-right font-medium ${campaign.roas_7d >= 2.0 ? 'text-green-600' : campaign.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {safeNumber(campaign.roas_7d, 2)}x
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>${safeNumber(campaign.revenue, 0)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpm, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ctr * 100, 2)}%</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.ipm, 1)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{campaign.conversions || 0}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpi, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{safeNumber(campaign.pp10k, 1)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.avg_purchase_value, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(campaign.cpp, 2)}</td>
+                      <td className={`px-4 py-3 text-sm text-right font-medium ${campaign.roas >= 2.0 ? 'text-green-600' : campaign.roas >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {safeNumber(campaign.roas, 2)}x
                       </td>
                     </tr>
 
@@ -516,21 +607,21 @@ export default function CampaignLevelView({ isDark }: CampaignLevelViewProps) {
                           </span>
                         </td>
                         <td className={`px-4 py-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.primary_country || 'Unknown'}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.spend_7d, 0)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.spend, 0)}</td>
                         <td className={`px-4 py-2 text-sm text-right ${adset.spend_change > 0 ? 'text-green-600' : adset.spend_change < 0 ? 'text-red-600' : isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                           {adset.spend_change > 0 ? '+' : ''}{safeNumber(adset.spend_change, 1)}%
                         </td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.revenue_7d, 0)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpm_7d, 2)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ctr_7d * 100, 2)}%</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ipm_7d, 1)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.conversions_7d || 0}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpi_7d, 2)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.pp10k_7d, 1)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.avg_purchase_value_7d, 2)}</td>
-                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpp_7d, 2)}</td>
-                        <td className={`px-4 py-2 text-sm text-right font-medium ${adset.roas_7d >= 2.0 ? 'text-green-600' : adset.roas_7d >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
-                          {safeNumber(adset.roas_7d, 2)}x
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>${safeNumber(adset.revenue, 0)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpm, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ctr * 100, 2)}%</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.ipm, 1)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{adset.conversions || 0}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpi, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(adset.pp10k, 1)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.avg_purchase_value, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(adset.cpp, 2)}</td>
+                        <td className={`px-4 py-2 text-sm text-right font-medium ${adset.roas >= 2.0 ? 'text-green-600' : adset.roas >= 1.0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                          {safeNumber(adset.roas, 2)}x
                         </td>
                       </tr>
                     ))}
