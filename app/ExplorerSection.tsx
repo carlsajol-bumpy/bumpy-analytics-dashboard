@@ -17,7 +17,7 @@ import { exportToCSV } from '../lib/csvExport'
 //
 // PER-TIMEFRAME (swap suffix):
 //   spend_7d       | spend_prev       | spend_28d       | spend_30d
-//   roas_7d        | roas_prev        | roas_28d        | roas_30d      ← ROAS
+//   rass_7d        | roas_prev        | roas_28d        | roas_30d      ← ROAS
 //   ctr_7d         | ctr_prev         | ctr_28d         | ctr_30d
 //   hook_rate_7d   | hook_rate_prev   | hook_rate_28d   | hook_rate_30d
 //   hold_rate_7d   | hold_rate_prev   | hold_rate_28d   | hold_rate_30d
@@ -612,21 +612,143 @@ export default function CreativePersonaReportView({ isDark }: Props) {
       {viewMode === 'charts' && (
         <div className="space-y-6">
           <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-            <h3 className={`text-base font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Spend vs ROAS by Persona <span className={`text-xs font-normal ml-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>({tfLabel})</span>
-            </h3>
-            <ResponsiveContainer width="100%" height={450}>
-              <BarChart data={personaAggregated} margin={{ bottom: 90 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#E5E7EB'} />
-                <XAxis dataKey="persona" stroke={isDark ? '#9CA3AF' : '#6B7280'} angle={-45} textAnchor="end" height={110} interval={0} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="left"  stroke={isDark ? '#9CA3AF' : '#6B7280'} label={{ value: 'Spend ($)', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
-                <YAxis yAxisId="right" orientation="right" stroke="#10B981" label={{ value: 'ROAS', angle: 90, position: 'insideRight', style: { fontSize: 11 } }} />
-                <Tooltip contentStyle={{ backgroundColor: isDark ? '#1F2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`, borderRadius: 8 }} />
-                <Legend />
-                <Bar yAxisId="left"  dataKey="spend" fill="#06B6D4" name="Spend ($)" />
-                <Bar yAxisId="right" dataKey="roas"  fill="#10B981" name="ROAS" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Spend &amp; ROAS by Persona
+                </h3>
+                <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {tfLabel} — sorted by spend — {personaAggregated.length} personas
+                </p>
+              </div>
+            </div>
+
+            {/* Custom tooltip — looks up persona in aggregated data to show both metrics */}
+            {(() => {
+              const personaMap = Object.fromEntries(personaAggregated.map(p => [p.persona, p]))
+              const tooltipStyle = {
+                backgroundColor: isDark ? '#1F2937' : '#fff',
+                border: `1px solid ${isDark ? '#374151' : '#E5E7EB'}`,
+                borderRadius: 8,
+                fontSize: 12,
+                color: isDark ? '#F9FAFB' : '#111827',
+              }
+              const SpendTooltip = ({ active, payload }: any) => {
+                if (!active || !payload?.length) return null
+                const persona = payload[0]?.payload?.persona
+                const d = personaMap[persona]
+                if (!d) return null
+                return (
+                  <div style={tooltipStyle} className="p-3 shadow-lg">
+                    <div className="font-semibold mb-1.5">{persona}</div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Spend</span>
+                      <span className="font-medium">${d.spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ROAS</span>
+                      <span className={`font-medium ${d.roas >= 2 ? 'text-green-500' : d.roas >= 1 ? 'text-yellow-500' : 'text-red-500'}`}>
+                        {d.roas.toFixed(2)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Conversions</span>
+                      <span className="font-medium">{Math.round(d.conversions)}</span>
+                    </div>
+                  </div>
+                )
+              }
+              const RoasTooltip = ({ active, payload }: any) => {
+                if (!active || !payload?.length) return null
+                const persona = payload[0]?.payload?.persona
+                const d = personaMap[persona]
+                if (!d) return null
+                return (
+                  <div style={tooltipStyle} className="p-3 shadow-lg">
+                    <div className="font-semibold mb-1.5">{persona}</div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>ROAS</span>
+                      <span className={`font-medium ${d.roas >= 2 ? 'text-green-500' : d.roas >= 1 ? 'text-yellow-500' : 'text-red-500'}`}>
+                        {d.roas.toFixed(2)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Spend</span>
+                      <span className="font-medium">${d.spend.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="flex justify-between gap-6">
+                      <span style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}>Conversions</span>
+                      <span className="font-medium">{Math.round(d.conversions)}</span>
+                    </div>
+                  </div>
+                )
+              }
+
+              const yAxisColor = isDark ? '#E5E7EB' : '#111827'
+              const xAxisColor = isDark ? '#9CA3AF' : '#6B7280'
+              const gridColor  = isDark ? '#374151' : '#E5E7EB'
+              const sectionLabelClass = `text-xs font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-800'}`
+
+              return (
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Left: Spend sorted by spend desc */}
+                  <div>
+                    <div className={sectionLabelClass}>Spend ($)</div>
+                    <ResponsiveContainer width="100%" height={Math.max(320, personaAggregated.length * 26)}>
+                      <BarChart layout="vertical" data={personaAggregated}
+                        margin={{ top: 0, right: 16, bottom: 0, left: 8 }} barSize={14}>
+                        <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke={gridColor} />
+                        <XAxis type="number" stroke={xAxisColor} tick={{ fontSize: 10, fill: xAxisColor }}
+                          tickFormatter={(v) => v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`} />
+                        <YAxis type="category" dataKey="persona" width={115}
+                          tick={{ fontSize: 11, fill: yAxisColor }} stroke="none" />
+                        <Tooltip content={<SpendTooltip />}
+                          cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }} />
+                        <Bar dataKey="spend" radius={[0, 4, 4, 0]}>
+                          {personaAggregated.map((_, i) => (
+                            <Cell key={`s-${i}`} fill={PALETTE[i % PALETTE.length]} fillOpacity={0.85} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Right: ROAS sorted by roas desc */}
+                  <div>
+                    <div className={sectionLabelClass}>ROAS</div>
+                    <ResponsiveContainer width="100%" height={Math.max(320, personaAggregated.length * 26)}>
+                      <BarChart layout="vertical"
+                        data={[...personaAggregated].sort((a, b) => b.roas - a.roas)}
+                        margin={{ top: 0, right: 16, bottom: 0, left: 8 }} barSize={14}>
+                        <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke={gridColor} />
+                        <XAxis type="number" stroke={xAxisColor} tick={{ fontSize: 10, fill: xAxisColor }}
+                          tickFormatter={(v) => `${v.toFixed(1)}x`} />
+                        <YAxis type="category" dataKey="persona" width={115}
+                          tick={{ fontSize: 11, fill: yAxisColor }} stroke="none" />
+                        <Tooltip content={<RoasTooltip />}
+                          cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }} />
+                        <ReferenceLine x={1} stroke="#EF4444" strokeDasharray="4 2" strokeWidth={1.5} />
+                        <Bar dataKey="roas" radius={[0, 4, 4, 0]}>
+                          {[...personaAggregated].sort((a, b) => b.roas - a.roas).map((entry, i) => (
+                            <Cell key={`r-${i}`}
+                              fill={entry.roas >= 2 ? '#10B981' : entry.roas >= 1 ? '#F59E0B' : '#EF4444'}
+                              fillOpacity={0.85} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Legend */}
+            <div className={`mt-4 flex items-center gap-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-green-500" /> ROAS ≥ 2x</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-yellow-500" /> ROAS 1–2x</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-red-500" /> ROAS &lt; 1x</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-red-500 mt-0.5" /> Break-even</span>
+            </div>
           </div>
 
           <div className={`rounded-xl p-6 shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
