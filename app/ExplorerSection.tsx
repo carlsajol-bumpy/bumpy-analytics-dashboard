@@ -17,7 +17,7 @@ import { exportToCSV } from '../lib/csvExport'
 //
 // PER-TIMEFRAME (swap suffix):
 //   spend_7d       | spend_prev       | spend_28d       | spend_30d
-//   rass_7d        | roas_prev        | roas_28d        | roas_30d      ← ROAS
+//   roas_7d        | roas_prev        | roas_28d        | roas_30d      ← ROAS
 //   ctr_7d         | ctr_prev         | ctr_28d         | ctr_30d
 //   hook_rate_7d   | hook_rate_prev   | hook_rate_28d   | hook_rate_30d
 //   hold_rate_7d   | hold_rate_prev   | hold_rate_28d   | hold_rate_30d
