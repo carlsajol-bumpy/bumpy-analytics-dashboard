@@ -51,6 +51,35 @@ function safeNum(value: any, decimals = 2): string {
   return isNaN(n) ? (0).toFixed(decimals) : n.toFixed(decimals)
 }
 
+// ── Sortable column definitions ─────────────────────────────────────────────
+type SortDirection = 'asc' | 'desc' | null
+
+interface SortableColumn {
+  key: string
+  label: string
+  align: 'left' | 'right'
+  type: 'string' | 'number'
+}
+
+const TABLE_COLUMNS: SortableColumn[] = [
+  { key: 'ad_name',              label: 'Ad Name',     align: 'left',  type: 'string' },
+  { key: 'persona',              label: 'Persona',     align: 'left',  type: 'string' },
+  { key: 'concept_code',         label: 'Concept',     align: 'left',  type: 'string' },
+  { key: 'performance_category', label: 'Performance', align: 'left',  type: 'string' },
+  { key: 'batch',                label: 'Batch',       align: 'left',  type: 'string' },
+  { key: 'media_type',           label: 'Type',        align: 'left',  type: 'string' },
+  { key: 'spend',                label: 'Spend',       align: 'right', type: 'number' },
+  { key: 'roas',                 label: 'ROAS',        align: 'right', type: 'number' },
+  { key: 'conversions',          label: 'Conv',        align: 'right', type: 'number' },
+  { key: 'cpa',                  label: 'CPA',         align: 'right', type: 'number' },
+  { key: 'impressions',          label: 'Impr',        align: 'right', type: 'number' },
+  { key: 'clicks',               label: 'Clicks',      align: 'right', type: 'number' },
+  { key: 'ctr',                  label: 'CTR',         align: 'right', type: 'number' },
+  { key: 'hook_rate',            label: 'Hook%',       align: 'right', type: 'number' },
+  { key: 'hold_rate',            label: 'Hold%',       align: 'right', type: 'number' },
+  { key: 'frequency',            label: 'Freq',        align: 'right', type: 'number' },
+]
+
 interface Props { isDark?: boolean }
 
 export default function CreativePersonaReportView({ isDark }: Props) {
@@ -67,6 +96,42 @@ export default function CreativePersonaReportView({ isDark }: Props) {
     minSpend:    0,
   })
 
+  // ── Sorting state ─────────────────────────────────────────────────
+  const [sortField, setSortField]         = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+
+  const handleSort = (columnKey: string) => {
+    if (sortField === columnKey) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortField(null)
+        setSortDirection(null)
+      }
+    } else {
+      setSortField(columnKey)
+      setSortDirection('asc')
+    }
+  }
+
+  const SortIndicator = ({ columnKey }: { columnKey: string }) => {
+    const isActive = sortField === columnKey
+    return (
+      <span className="inline-flex flex-col ml-1" style={{ lineHeight: 0, verticalAlign: 'middle' }}>
+        <svg width="8" height="5" viewBox="0 0 8 5"
+          className={isActive && sortDirection === 'asc' ? 'text-cyan-400' : isDark ? 'text-gray-600' : 'text-gray-300'}
+          style={{ marginBottom: '1px' }}>
+          <path d="M4 0L8 5H0L4 0Z" fill="currentColor" />
+        </svg>
+        <svg width="8" height="5" viewBox="0 0 8 5"
+          className={isActive && sortDirection === 'desc' ? 'text-cyan-400' : isDark ? 'text-gray-600' : 'text-gray-300'}
+          style={{ marginTop: '1px' }}>
+          <path d="M4 5L0 0H8L4 5Z" fill="currentColor" />
+        </svg>
+      </span>
+    )
+  }
+
   const [scatterConfig, setScatterConfig] = useState({
     xAxis: 'spend', yAxis: 'roas', maxItems: 500, minSpendForScatter: 10,
   })
@@ -78,7 +143,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
   )
 
   // col(base) → exact Supabase column name for the active timeframe
-  // Special case: ROAS column is "roas_*" not "roas_*"
   const col = useCallback((base: string) => {
     const colBase = base === 'roas' ? 'roas' : base
     return `${colBase}${suffix}`
@@ -143,9 +207,8 @@ export default function CreativePersonaReportView({ isDark }: Props) {
   const timedData = useMemo(() =>
     rawData.map(row => ({
       ...row,
-      // Computed fields using active timeframe columns
       spend:       n(row, 'spend'),
-      roas:        n(row, 'roas'),        // reads roas_7d / roas_prev / etc
+      roas:        n(row, 'roas'),
       conversions: n(row, 'conversions'),
       impressions: n(row, 'impressions'),
       clicks:      n(row, 'clicks'),
@@ -156,10 +219,8 @@ export default function CreativePersonaReportView({ isDark }: Props) {
       hook_rate:   n(row, 'hook_rate'),
       hold_rate:   n(row, 'hold_rate'),
       ipm:         n(row, 'ipm'),
-      // Static columns (already correct names from DB)
-      // persona, concept_code, performance_category, batch, ad_name, adset_name, status are pass-through
     })),
-  [rawData, suffix])  // re-runs when timeframe changes
+  [rawData, suffix])
 
   // ── Filters ───────────────────────────────────────────────────────
   const filteredData = useMemo(() => timedData.filter(row => {
@@ -173,6 +234,34 @@ export default function CreativePersonaReportView({ isDark }: Props) {
     if (row.spend < filters.minSpend)                                                   return false
     return true
   }), [timedData, filters])
+
+  // ── Sorted data for table ─────────────────────────────────────────
+  const sortedData = useMemo(() => {
+    if (!sortField || !sortDirection) return filteredData
+
+    const colDef = TABLE_COLUMNS.find(c => c.key === sortField)
+    if (!colDef) return filteredData
+
+    return [...filteredData].sort((a, b) => {
+      let valA = a[sortField]
+      let valB = b[sortField]
+
+      if (valA === null || valA === undefined) valA = colDef.type === 'number' ? 0 : ''
+      if (valB === null || valB === undefined) valB = colDef.type === 'number' ? 0 : ''
+
+      if (colDef.type === 'number') {
+        valA = parseFloat(valA) || 0
+        valB = parseFloat(valB) || 0
+        return sortDirection === 'asc' ? valA - valB : valB - valA
+      } else {
+        valA = String(valA).toLowerCase()
+        valB = String(valB).toLowerCase()
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+        return 0
+      }
+    })
+  }, [filteredData, sortField, sortDirection])
 
   // ── Dropdown options ──────────────────────────────────────────────
   const personaOptions  = useMemo(() => [...new Set(rawData.map(d => d.persona).filter(Boolean))].sort(),       [rawData])
@@ -192,7 +281,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
   ), [filteredData])
 
   const totalSpendForRoas = totals.spend
-  // Weighted avg ROAS = sum(spend * roas) / sum(spend)
   const weightedRoas = useMemo(() => {
     const weightedSum = filteredData.reduce((s, r) => s + r.spend * r.roas, 0)
     return totalSpendForRoas > 0 ? weightedSum / totalSpendForRoas : 0
@@ -623,7 +711,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
               </div>
             </div>
 
-            {/* Custom tooltip — looks up persona in aggregated data to show both metrics */}
             {(() => {
               const personaMap = Object.fromEntries(personaAggregated.map(p => [p.persona, p]))
               const tooltipStyle = {
@@ -691,7 +778,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
 
               return (
                 <div className="grid grid-cols-2 gap-6">
-                  {/* Left: Spend sorted by spend desc */}
                   <div>
                     <div className={sectionLabelClass}>Spend ($)</div>
                     <ResponsiveContainer width="100%" height={Math.max(320, personaAggregated.length * 26)}>
@@ -713,7 +799,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Right: ROAS sorted by roas desc */}
                   <div>
                     <div className={sectionLabelClass}>ROAS</div>
                     <ResponsiveContainer width="100%" height={Math.max(320, personaAggregated.length * 26)}>
@@ -742,7 +827,6 @@ export default function CreativePersonaReportView({ isDark }: Props) {
               )
             })()}
 
-            {/* Legend */}
             <div className={`mt-4 flex items-center gap-4 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-green-500" /> ROAS ≥ 2x</span>
               <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-yellow-500" /> ROAS 1–2x</span>
@@ -792,30 +876,54 @@ export default function CreativePersonaReportView({ isDark }: Props) {
       {viewMode === 'table' && (
         <div className={`rounded-xl overflow-hidden shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <div className="p-5 border-b border-gray-700">
-            <h3 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
-            <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {filteredData.length.toLocaleString()} rows — {tfLabel}
-              {filters.performance !== 'All' && ` — ${filters.performance}`}
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className={`text-base font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
+                <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {filteredData.length.toLocaleString()} rows — {tfLabel}
+                  {filters.performance !== 'All' && ` — ${filters.performance}`}
+                  {sortField && (
+                    <span className="ml-2 text-cyan-500">
+                      • Sorted by {TABLE_COLUMNS.find(c => c.key === sortField)?.label} ({sortDirection === 'asc' ? '↑ low to high' : '↓ high to low'})
+                    </span>
+                  )}
+                </p>
+              </div>
+              {sortField && (
+                <button
+                  onClick={() => { setSortField(null); setSortDirection(null) }}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                  Clear Sort
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto max-h-[640px]">
             <table className="w-full text-xs">
-              <thead className={`sticky top-0 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
+              <thead className={`sticky top-0 z-10 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
                 <tr>
-                  {[
-                    'Ad Name','Persona','Concept','Performance','Batch','Type',
-                    'Spend','ROAS','Conv','CPA','Impr','Clicks','CTR','Hook%','Hold%','Freq',
-                  ].map(col => (
-                    <th key={col} className={`px-3 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap
-                      ${['Spend','ROAS','Conv','CPA','Impr','Clicks','CTR','Hook%','Hold%','Freq'].includes(col) ? 'text-right' : 'text-left'}
-                      ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {col}
+                  {TABLE_COLUMNS.map(colDef => (
+                    <th
+                      key={colDef.key}
+                      onClick={() => handleSort(colDef.key)}
+                      className={`px-3 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap cursor-pointer select-none transition-colors
+                        ${colDef.align === 'right' ? 'text-right' : 'text-left'}
+                        ${sortField === colDef.key
+                          ? (isDark ? 'text-cyan-400 bg-gray-800' : 'text-cyan-700 bg-cyan-50')
+                          : (isDark ? 'text-gray-400 hover:text-cyan-400 hover:bg-gray-800' : 'text-gray-600 hover:text-cyan-700 hover:bg-gray-100')
+                        }`}
+                    >
+                      <span className="inline-flex items-center gap-0.5">
+                        {colDef.label}
+                        <SortIndicator columnKey={colDef.key} />
+                      </span>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                {filteredData.map((row, idx) => (
+                {sortedData.map((row, idx) => (
                   <tr key={idx} className={isDark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
                     <td className={`px-3 py-2 max-w-[200px] truncate ${isDark ? 'text-gray-300' : 'text-gray-700'}`} title={row.ad_name}>{row.ad_name}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
