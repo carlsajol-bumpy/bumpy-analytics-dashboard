@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { exportToCSV } from '../lib/csvExport'
@@ -35,6 +35,17 @@ interface CreativePersonaReportViewProps {
   isDark?: boolean
 }
 
+// Sort direction type
+type SortDirection = 'asc' | 'desc' | null
+
+// Column definition for sorting
+interface SortableColumn {
+  key: string
+  label: string
+  align: 'left' | 'right'
+  type: 'string' | 'number'
+}
+
 export default function CreativePersonaReportView({ isDark }: CreativePersonaReportViewProps) {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,6 +55,69 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     campaign: 'All',
     minSpend: 0
   })
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+
+  // Define sortable columns
+  const sortableColumns: SortableColumn[] = [
+    { key: 'week', label: 'Week', align: 'left', type: 'string' },
+    { key: 'campaign_name', label: 'Campaign', align: 'left', type: 'string' },
+    { key: 'ad_name', label: 'Ad Name', align: 'left', type: 'string' },
+    { key: 'persona', label: 'Persona', align: 'left', type: 'string' },
+    { key: 'concept_code', label: 'Concept', align: 'left', type: 'string' },
+    { key: 'spend', label: 'Spend', align: 'right', type: 'number' },
+    { key: 'revenue', label: 'Revenue', align: 'right', type: 'number' },
+    { key: 'roas', label: 'ROAS', align: 'right', type: 'number' },
+    { key: 'purchases', label: 'Purchases', align: 'right', type: 'number' },
+    { key: 'cost_per_purchase', label: 'CPP', align: 'right', type: 'number' },
+    { key: 'impressions', label: 'Impressions', align: 'right', type: 'number' },
+    { key: 'link_clicks', label: 'Link Clicks', align: 'right', type: 'number' },
+    { key: 'ctr', label: 'CTR', align: 'right', type: 'number' },
+    { key: 'cpm', label: 'CPM', align: 'right', type: 'number' },
+    { key: 'cpc', label: 'CPC', align: 'right', type: 'number' },
+    { key: 'frequency', label: 'Frequency', align: 'right', type: 'number' },
+  ]
+
+  // Handle column header click for sorting
+  const handleSort = (columnKey: string) => {
+    if (sortField === columnKey) {
+      // Cycle: asc -> desc -> null
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else if (sortDirection === 'desc') {
+        setSortField(null)
+        setSortDirection(null)
+      }
+    } else {
+      setSortField(columnKey)
+      setSortDirection('asc')
+    }
+  }
+
+  // Sort indicator component
+  const SortIndicator = ({ columnKey }: { columnKey: string }) => {
+    const isActive = sortField === columnKey
+    return (
+      <span className="inline-flex flex-col ml-1" style={{ lineHeight: 0, verticalAlign: 'middle' }}>
+        <svg
+          width="8" height="6" viewBox="0 0 8 6"
+          className={`${isActive && sortDirection === 'asc' ? 'text-cyan-400' : isDark ? 'text-gray-600' : 'text-gray-300'}`}
+          style={{ marginBottom: '1px' }}
+        >
+          <path d="M4 0L8 6H0L4 0Z" fill="currentColor" />
+        </svg>
+        <svg
+          width="8" height="6" viewBox="0 0 8 6"
+          className={`${isActive && sortDirection === 'desc' ? 'text-cyan-400' : isDark ? 'text-gray-600' : 'text-gray-300'}`}
+          style={{ marginTop: '1px' }}
+        >
+          <path d="M4 6L0 0H8L4 6Z" fill="currentColor" />
+        </svg>
+      </span>
+    )
+  }
 
   // CSV Export Function
   const handleExportCSV = () => {
@@ -79,19 +153,17 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
   }, [])
 
   // Extract persona from AD NAME - position 3 (SAME as By Concept tab)
-  // Pattern: US-[CODE]-[CONCEPT]-[PERSONA]-[DESCRIPTOR]-[TYPE]-[BATCH]
-  // Example: US-X4nR8W-TalkingHead-Passportbro-helicopter-suit-VID-Batch...
   const extractPersona = (adName: string): string => {
     if (!adName) return 'Unknown'
     const parts = adName.split('-')
-    return parts[3] || 'Unknown'  // Position 3 = Persona
+    return parts[3] || 'Unknown'
   }
 
   // Extract concept from AD NAME - position 2 (SAME as By Concept tab)
   const extractConceptCode = (adName: string): string => {
     if (!adName) return 'Unknown'
     const parts = adName.split('-')
-    return parts[2] || 'Unknown'  // Position 2 = Concept
+    return parts[2] || 'Unknown'
   }
 
   async function fetchData() {
@@ -109,32 +181,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         return
       }
 
-      console.log(' Total rows fetched:', reportData?.length)
-      console.log(' Sample row:', reportData?.[0])
-      console.log(' Available columns:', Object.keys(reportData?.[0] || {}))
-      console.log(' Checking for pre-existing columns:')
-      console.log('   - Persona column exists:', 'Persona' in (reportData?.[0] || {}))
-      console.log('   - Concept column exists:', 'Concept' in (reportData?.[0] || {}))
-      console.log('   - Week column exists:', 'Week' in (reportData?.[0] || {}))
-      console.log(' Sample values:')
-      console.log('   - Persona:', reportData?.[0]?.['Persona'])
-      console.log('   - Concept:', reportData?.[0]?.['Concept'])
-      console.log('   - Week:', reportData?.[0]?.['Week'])
-      
-      // Log first 5 ad names to see the pattern
-      console.log(' Sample ad names (first 5):')
-      reportData?.slice(0, 5).forEach((row: any, idx: number) => {
-        const adName = row['Ad name'] || ''
-        const parts = adName.split('-')
-        console.log(`  ${idx + 1}. Ad: ${adName}`)
-        console.log(`     Persona from column: ${row['Persona']}`)
-        console.log(`     Concept from column: ${row['Concept']}`)
-        console.log(`     Week from column: ${row['Week']}`)
-        console.log(`     Parts: [${parts.join('] [')}]`)
-        console.log(`     Extracted persona (pos 3): ${parts[3] || 'N/A'}`)
-        console.log(`     Extracted concept (pos 2): ${parts[2] || 'N/A'}`)
-      })
-      
       if (!reportData || reportData.length === 0) {
         console.warn('No data found in creative_persona_report')
         setLoading(false)
@@ -151,19 +197,16 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         const impressions = parseInt(row['Impressions'] || 0)
         const linkClicks = parseInt(row['Link clicks'] || 0)
         
-        // Try multiple column name variations (capitalized, lowercase, uppercase)
         const weekValue = row['Week'] || row['week'] || row['WEEK'] || ''
         const personaValue = row['Persona'] || row['persona'] || row['PERSONA'] || extractPersona(adName) || 'Unknown'
         const conceptValue = row['Concept'] || row['concept'] || row['CONCEPT'] || extractConceptCode(adName) || 'Unknown'
         
         return {
           ...row,
-          // Use existing columns from Supabase data (try all case variations)
           week: weekValue,
           week_raw: weekValue,
           persona: personaValue,
           concept_code: conceptValue,
-          // Normalize column names for easier access
           campaign_name: campaignName,
           ad_name: adName,
           spend: amountSpent,
@@ -175,26 +218,12 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
           cpm: row['CPM (cost per 1,000 impressions)'] || (impressions > 0 ? (amountSpent / impressions) * 1000 : 0),
           ctr: row['CTR (link click-through rate)'] || (impressions > 0 ? linkClicks / impressions : 0),
           frequency: row['Frequency'] || 0,
-          cost_per_purchase: row['Cost per purchase'] || (purchases > 0 ? amountSpent / purchases : 0)
+          cost_per_purchase: row['Cost per purchase'] || (purchases > 0 ? amountSpent / purchases : 0),
+          // Pre-compute CPC for sorting
+          cpc: linkClicks > 0 ? amountSpent / linkClicks : 0
         }
       })
 
-      console.log(' Enriched with persona/concept:', enrichedData[0])
-      console.log(' Sample persona:', enrichedData[0]?.persona)
-      console.log(' Sample concept:', enrichedData[0]?.concept_code)
-      console.log(' Sample week:', enrichedData[0]?.week)
-      
-      // Find and log any 3040 rows to verify they exist
-      const sample3040 = enrichedData.filter(d => d.persona === '3040').slice(0, 3)
-      console.log(' Sample 3040 rows found:', sample3040.length)
-      if (sample3040.length > 0) {
-        console.log(' First 3040 row:', {
-          persona: sample3040[0].persona,
-          spend: sample3040[0].spend,
-          week: sample3040[0].week,
-          ad_name: sample3040[0].ad_name?.substring(0, 50)
-        })
-      }
       setData(enrichedData)
     } catch (err) {
       console.error('Error:', err)
@@ -208,40 +237,46 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
     if (filters.persona.length > 0 && !filters.persona.includes(row.persona)) {
       return false
     }
-    
     if (filters.concept.length > 0 && !filters.concept.includes(row.concept_code)) {
       return false
     }
-    
     if (filters.campaign !== 'All' && row.campaign_name !== filters.campaign) {
       return false
     }
-    
     if (row.spend < filters.minSpend) {
       return false
     }
-    
     return true
   })
 
-  // Debug logging when persona filter is active
-  if (filters.persona.length > 0) {
-    console.log(' Persona Filter Active:', filters.persona)
-    console.log(' Total data rows:', data.length)
-    console.log('Filtered data rows:', filteredData.length)
-    console.log('Sample filtered personas:', filteredData.slice(0, 5).map(d => d.persona))
-    console.log(' All unique personas in data:', [...new Set(data.map(d => d.persona))].sort())
-    
-    // Check if the filtered persona exists in the data
-    filters.persona.forEach(p => {
-      const matchingRows = data.filter(d => d.persona === p)
-      console.log(` Rows matching "${p}":`, matchingRows.length)
-      if (matchingRows.length > 0) {
-        console.log(`   Sample ad name:`, matchingRows[0].ad_name)
-        console.log(`   Extracted persona:`, matchingRows[0].persona)
+  // Apply sorting to filtered data
+  const sortedData = useMemo(() => {
+    if (!sortField || !sortDirection) return filteredData
+
+    const columnDef = sortableColumns.find(c => c.key === sortField)
+    if (!columnDef) return filteredData
+
+    return [...filteredData].sort((a, b) => {
+      let valA = a[sortField]
+      let valB = b[sortField]
+
+      // Handle null/undefined
+      if (valA === null || valA === undefined) valA = columnDef.type === 'number' ? 0 : ''
+      if (valB === null || valB === undefined) valB = columnDef.type === 'number' ? 0 : ''
+
+      if (columnDef.type === 'number') {
+        valA = parseFloat(valA) || 0
+        valB = parseFloat(valB) || 0
+        return sortDirection === 'asc' ? valA - valB : valB - valA
+      } else {
+        valA = String(valA).toLowerCase()
+        valB = String(valB).toLowerCase()
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+        return 0
       }
     })
-  }
+  }, [filteredData, sortField, sortDirection])
 
   // Get unique values for filters
   const personaOptions = ['All', ...new Set(data.map(d => d.persona).filter(Boolean))].sort()
@@ -252,22 +287,13 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
   const personaAggregated = Object.entries(
     filteredData.reduce((acc: any, row) => {
       const persona = row.persona || 'Unknown'
-      
       if (!acc[persona]) {
-        acc[persona] = {
-          persona,
-          spend: 0,
-          revenue: 0,
-          purchases: 0,
-          impressions: 0
-        }
+        acc[persona] = { persona, spend: 0, revenue: 0, purchases: 0, impressions: 0 }
       }
-      
       acc[persona].spend += row.spend || 0
       acc[persona].revenue += row.revenue || 0
       acc[persona].purchases += row.purchases || 0
       acc[persona].impressions += row.impressions || 0
-      
       return acc
     }, {})
   ).map(([persona, data]: [string, any]) => ({
@@ -281,136 +307,38 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
       const week = row.week || 'Unknown'
       const persona = row.persona || 'Unknown'
       
-      // Debug log for first few rows when 3040 is filtered
-      if (filters.persona.includes('3040') && Object.keys(acc).length < 3) {
-        console.log(' [Reduce] Processing row:', {
-          week,
-          persona,
-          spend: row.spend,
-          ad_name: row.ad_name?.substring(0, 50)
-        })
-      }
-      
       if (!acc[week]) {
-        acc[week] = {
-          week,
-          total_revenue: 0
-        }
+        acc[week] = { week, total_revenue: 0 }
       }
       
       const spendKey = `${persona}_spend`
-      const roasKey = `${persona}_roas`
       
       if (!acc[week][spendKey]) {
         acc[week][spendKey] = 0
-        acc[week][roasKey] = 0
+        acc[week][`${persona}_roas`] = 0
         acc[week][`${persona}_revenue`] = 0
-        
-        if (filters.persona.includes('3040') && persona === '3040') {
-          console.log(` [Reduce] Created new key "${spendKey}" for week "${week}"`)
-        }
       }
       
       acc[week][spendKey] += row.spend || 0
       acc[week][`${persona}_revenue`] += row.revenue || 0
       acc[week].total_revenue += row.revenue || 0
       
-      if (filters.persona.includes('3040') && persona === '3040' && Object.keys(acc).length === 1) {
-        console.log(` [Reduce] After adding: ${spendKey} = ${acc[week][spendKey]}`)
-      }
-      
       return acc
     }, {})
   )
   
-  // Get unique personas from filtered data (not all data!)
   const filteredPersonas = [...new Set(filteredData.map(d => d.persona).filter(Boolean))]
   
-  const weeklyTrend = weeklyTrendRaw.map(([week, data]: [string, any], index: number) => {
+  const weeklyTrend = weeklyTrendRaw.map(([week, data]: [string, any]) => {
     const result: any = { week, total_revenue: data.total_revenue }
-    
-    // Debug: log what keys exist in data before mapping (first week only)
-    if (filters.persona.includes('3040') && index === 0) {
-      console.log(` [Map] First week "${week}" data keys:`, Object.keys(data))
-      console.log(` [Map] Has 3040_spend:`, '3040_spend' in data)
-      console.log(` [Map] 3040_spend value from reduce:`, data['3040_spend'])
-      console.log(` [Map] Filtered personas to iterate:`, filteredPersonas)
-    }
-    
-    // IMPORTANT: Only iterate through personas in FILTERED data, not ALL personas!
     filteredPersonas.forEach(persona => {
       const spendKey = `${persona}_spend`
       const revenueKey = `${persona}_revenue`
-      const roasKey = `${persona}_roas`
-      
-      // Use values from reduce accumulator
       result[spendKey] = data[spendKey] || 0
-      result[roasKey] = data[spendKey] > 0 ? (data[revenueKey] || 0) / data[spendKey] : 0
-      
-      // Debug: log when we're adding 3040 keys (first week only)
-      if (filters.persona.includes('3040') && persona === '3040' && index === 0) {
-        console.log(` [Map] Adding key "${spendKey}" with value:`, result[spendKey])
-        console.log(` [Map] Source value from data[${spendKey}]:`, data[spendKey])
-      }
+      result[`${persona}_roas`] = data[spendKey] > 0 ? (data[revenueKey] || 0) / data[spendKey] : 0
     })
-    
     return result
   }).sort((a, b) => a.week.localeCompare(b.week))
-
-  // Debug weekly trend when persona filter is active
-  if (filters.persona.length > 0) {
-    console.log('=== DEBUGGING 3040 PERSONA ===')
-    console.log('Filtered Data Length:', filteredData.length)
-    console.log('Sample Filtered Rows:', filteredData.slice(0, 3).map(d => ({
-      persona: d.persona,
-      spend: d.spend,
-      week: d.week,
-      ad_name: d.ad_name?.substring(0, 40)
-    })))
-    console.log('Weekly Trend Length:', weeklyTrend.length)
-    console.log('Weekly Trend Data (ALL weeks):', weeklyTrend)
-    console.log('Persona Aggregated:', personaAggregated)
-    console.log('Top 5 Personas:', personaAggregated.slice(0, 5).map(p => ({
-      persona: p.persona,
-      spend: p.spend,
-      dataKey: `${p.persona}_spend`
-    })))
-    
-    // Check if the dataKey exists in weeklyTrend
-    if (weeklyTrend.length > 0 && personaAggregated.length > 0) {
-      const firstPersona = personaAggregated[0].persona
-      const dataKey = `${firstPersona}_spend`
-      console.log('Checking if dataKey exists in weeklyTrend:')
-      console.log(`   DataKey: "${dataKey}"`)
-      console.log(`   First week has this key:`, weeklyTrend[0].hasOwnProperty(dataKey))
-      console.log(`   First week value:`, weeklyTrend[0][dataKey])
-      console.log(`   All keys in first week:`, Object.keys(weeklyTrend[0]))
-      
-      // IMPORTANT: Check ALL weeks for this key
-      const weeksWithData = weeklyTrend.filter(w => w[dataKey] && w[dataKey] > 0)
-      console.log(`Weeks with ${dataKey} > 0:`, weeksWithData.length, '/', weeklyTrend.length)
-      if (weeksWithData.length > 0) {
-        console.log(`ample weeks with data:`, weeksWithData.slice(0, 3).map(w => ({
-          week: w.week,
-          spend: w[dataKey]
-        })))
-      }
-      
-      // Check scale issue
-      const maxSpend = Math.max(...weeklyTrend.map(w => w[dataKey] || 0))
-      const maxRevenue = Math.max(...weeklyTrend.map(w => w.total_revenue || 0))
-      console.log('SCALE ANALYSIS:')
-      console.log(`   Max weekly spend: $${maxSpend}`)
-      console.log(`   Max weekly revenue: $${maxRevenue}`)
-      console.log(`   Ratio: ${maxRevenue > 0 ? (maxSpend / maxRevenue * 100).toFixed(2) : 0}% (spend vs revenue)`)
-      if (maxSpend < maxRevenue * 0.1 && maxSpend > 0) {
-        console.warn('⚠️ WARNING: Spend values are <10% of revenue! Line may be barely visible at bottom of chart!')
-      }
-      if (maxSpend === 0) {
-        console.error('🚨 ERROR: Max spend is $0! No data in weeklyTrend for this persona!')
-      }
-    }
-  }
 
   // Calculate totals
   const totals = filteredData.reduce((acc, row) => {
@@ -423,7 +351,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
 
   const overallRoas = totals.spend > 0 ? totals.revenue / totals.spend : 0
 
-  // Define colors for personas (dynamic based on actual personas found)
+  // Define colors for personas
   const personaColors: Record<string, string> = {
     'Passportbro': '#3B82F6',
     'PassportBro': '#3B82F6',
@@ -599,22 +527,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
               <p className={`text-sm mb-3 ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
                 No data found for persona: <span className="font-semibold">{filters.persona.join(', ')}</span>
               </p>
-              <div className={`text-xs ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                <p className="mb-2">This could mean:</p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>The persona value in the filter doesn't match the data exactly</li>
-                  <li>No ads have this persona assigned</li>
-                  <li>The ad name format for this persona is different</li>
-                </ul>
-                <p className="mt-3">
-                  <strong>Tip:</strong> Open the browser console (F12) to see debug logs showing:
-                </p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>All unique persona values in the data</li>
-                  <li>Sample ad names</li>
-                  <li>Extraction details</li>
-                </ul>
-              </div>
             </div>
           </div>
         </div>
@@ -702,28 +614,9 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
             />
             <Legend wrapperStyle={{ paddingTop: '20px' }} />
             
-            {/* Show personas from filtered data */}
             {filteredPersonas.slice(0, 5).map((persona, index) => {
               const dataKey = `${persona}_spend`
               const color = personaColors[persona] || ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'][index]
-              
-              // Get total spend for this persona
-              const personaTotal = filteredData
-                .filter(d => d.persona === persona)
-                .reduce((sum, d) => sum + (d.spend || 0), 0)
-              
-              // Debug log for each line being created
-              if (filters.persona.length > 0) {
-                console.log(`Creating Line for persona "${persona}":`, {
-                  dataKey,
-                  color,
-                  totalSpend: personaTotal,
-                  sampleWeekValues: weeklyTrend.slice(0, 2).map(w => ({
-                    week: w.week,
-                    value: w[dataKey]
-                  }))
-                })
-              }
               
               return (
                 <Line
@@ -753,7 +646,6 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         
         <div className={`mt-4 grid grid-cols-auto-fit gap-2`} style={{gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'}}>
           {filteredPersonas.slice(0, 5).map(persona => {
-            // Calculate metrics for this persona from filtered data
             const personaRows = filteredData.filter(d => d.persona === persona)
             const personaSpend = personaRows.reduce((sum, d) => sum + (d.spend || 0), 0)
             const personaRevenue = personaRows.reduce((sum, d) => sum + (d.revenue || 0), 0)
@@ -780,38 +672,56 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
         )}
       </div>
 
-      {/* Detailed Table */}
+      {/* Detailed Table with Sorting */}
       <div className={`rounded-xl overflow-hidden shadow-sm border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="p-6">
-          <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
-          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Showing all {filteredData.length.toLocaleString()} rows
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-lg font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Detailed Data</h3>
+              <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Showing all {filteredData.length.toLocaleString()} rows
+                {sortField && (
+                  <span className="ml-2 text-cyan-500">
+                    • Sorted by {sortableColumns.find(c => c.key === sortField)?.label} ({sortDirection === 'asc' ? '↑ low to high' : '↓ high to low'})
+                  </span>
+                )}
+              </p>
+            </div>
+            {sortField && (
+              <button
+                onClick={() => { setSortField(null); setSortDirection(null) }}
+                className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Clear Sort
+              </button>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto max-h-[600px]">
           <table className="w-full text-xs">
-            <thead className={`sticky top-0 ${isDark ? 'bg-gray-750' : 'bg-gray-50'}`}>
+            <thead className={`sticky top-0 z-10 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
               <tr>
-                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Week</th>
-                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Campaign</th>
-                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Ad Name</th>
-                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Persona</th>
-                <th className={`px-3 py-3 text-left text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Concept</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Spend</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Revenue</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>ROAS</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Purchases</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPP</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Impressions</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Link Clicks</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CTR</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPM</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>CPC</th>
-                <th className={`px-3 py-3 text-right text-xs font-medium uppercase ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Frequency</th>
+                {sortableColumns.map(col => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className={`px-3 py-3 text-xs font-medium uppercase cursor-pointer select-none transition-colors
+                      ${col.align === 'right' ? 'text-right' : 'text-left'}
+                      ${sortField === col.key
+                        ? (isDark ? 'text-cyan-400 bg-gray-800' : 'text-cyan-700 bg-cyan-50')
+                        : (isDark ? 'text-gray-300 hover:text-cyan-400 hover:bg-gray-800' : 'text-gray-600 hover:text-cyan-700 hover:bg-gray-100')
+                      }`}
+                  >
+                    <span className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                      {col.label}
+                      <SortIndicator columnKey={col.key} />
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {filteredData.map((row, idx) => (
+              {sortedData.map((row, idx) => (
                 <tr key={idx} className={`${isDark ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}>
                   <td className={`px-3 py-2 whitespace-nowrap ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.week}</td>
                   <td className={`px-3 py-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{row.campaign_name}</td>
@@ -839,7 +749,7 @@ export default function CreativePersonaReportView({ isDark }: CreativePersonaRep
                   <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{(row.link_clicks || 0).toLocaleString()}</td>
                   <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber((row.ctr || 0) * 100, 2)}%</td>
                   <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(row.cpm, 2)}</td>
-                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber((row.link_clicks || 0) > 0 ? row.spend / row.link_clicks : 0, 2)}</td>
+                  <td className={`px-3 py-2 text-right whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>${safeNumber(row.cpc, 2)}</td>
                   <td className={`px-3 py-2 text-right ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{safeNumber(row.frequency, 2)}</td>
                 </tr>
               ))}
